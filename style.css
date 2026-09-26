@@ -126,3 +126,10 @@
     font-size:13px; overflow-wrap:anywhere;
   }
   #highlightLayer .searchHit{ background:#ffe66d; color:#111; border-radius:2px; }
+
+  #modalBox.hasInput{ width:min(420px,85vw); }
+  #modalBox .modalInput{
+    display:block; width:100%; margin:-4px 0 14px; padding:8px;
+    border:1px solid var(--btn-border); border-radius:6px;
+    background:var(--bg); color:var(--fg); font-size:16px;
+  }

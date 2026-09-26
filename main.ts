@@ -11,6 +11,7 @@
   const fileInput = document.getElementById('fileInput');
   const modalOverlay = document.getElementById('modalOverlay');
   const modalMessage = document.getElementById('modalMessage');
+  const modalBox = document.getElementById('modalBox');
   const modalOk = document.getElementById('modalOk');
   const modalCancel = document.getElementById('modalCancel');
   const toast = document.getElementById('toast');
@@ -21,18 +22,60 @@
   let activeSearchMatch: {start: number; end: number; query: string} | null = null;
 
   // --- custom modal helpers (window.confirm/alert can be silently blocked inside sandboxed pages) ---
-  function showConfirm(message, onConfirm){
+  function showConfirm(message, onConfirm, onCancel = ()=>{}, labels: {ok?: string; cancel?: string} = {}){
     modalMessage.textContent = message;
+    const previousOkText = modalOk.textContent;
+    const previousCancelText = modalCancel.textContent;
+    if(labels.ok) modalOk.textContent = labels.ok;
+    if(labels.cancel) modalCancel.textContent = labels.cancel;
     modalOverlay.classList.add('show');
     const cleanup = ()=>{
       modalOverlay.classList.remove('show');
       modalOk.removeEventListener('click', okHandler);
       modalCancel.removeEventListener('click', cancelHandler);
+      modalOk.textContent = previousOkText;
+      modalCancel.textContent = previousCancelText;
     };
     const okHandler = ()=>{ cleanup(); onConfirm(); };
-    const cancelHandler = ()=>{ cleanup(); };
+    const cancelHandler = ()=>{ cleanup(); onCancel(); };
     modalOk.addEventListener('click', okHandler);
     modalCancel.addEventListener('click', cancelHandler);
+  }
+
+  function showFilenamePrompt(message, initialValue, onSubmit){
+    modalMessage.textContent = message;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = initialValue;
+    input.className = 'modalInput';
+    modalBox.classList.add('hasInput');
+    input.setAttribute('aria-label', 'ファイル名');
+    modalMessage.after(input);
+    const previousOkText = modalOk.textContent;
+    const previousCancelText = modalCancel.textContent;
+    modalOk.textContent = '保存';
+    modalCancel.textContent = 'キャンセル';
+    modalOverlay.classList.add('show');
+    const cleanup = ()=>{
+      modalOverlay.classList.remove('show');
+      modalOk.removeEventListener('click', okHandler);
+      modalCancel.removeEventListener('click', cancelHandler);
+      input.removeEventListener('keydown', keyHandler);
+      input.remove();
+      modalOk.textContent = previousOkText;
+      modalCancel.textContent = previousCancelText;
+    };
+    const okHandler = ()=>{ const name = input.value.trim(); cleanup(); onSubmit(name); };
+    const cancelHandler = ()=>cleanup();
+    const keyHandler = (event: KeyboardEvent)=>{
+      if(event.key === 'Enter'){ event.preventDefault(); okHandler(); }
+      if(event.key === 'Escape'){ event.preventDefault(); cancelHandler(); }
+    };
+    modalOk.addEventListener('click', okHandler);
+    modalCancel.addEventListener('click', cancelHandler);
+    input.addEventListener('keydown', keyHandler);
+    input.focus();
+    input.select();
   }
   let toastTimer = null;
   function showToast(message){
@@ -43,6 +86,7 @@
   }
 
   let fileName = '無題.txt';
+  let saveDirectoryHandle: any = null;
   let documentText = '';
   let documentSelectionStart = 0;
   let documentSelectionEnd = 0;
@@ -584,7 +628,53 @@
     if(!numberedBase) return name;
     return numberedBase[1] + '(' + (Number(numberedBase[2]) + 1) + ')' + extension;
   }
-  document.getElementById('btnSave').addEventListener('click', ()=>{
+
+  function getNextAvailableVersionName(name: string, existingNames: Set<string>){
+    const extensionIndex = name.lastIndexOf('.');
+    const hasExtension = extensionIndex > 0;
+    const baseName = hasExtension ? name.slice(0, extensionIndex) : name;
+    const extension = hasExtension ? name.slice(extensionIndex) : '';
+    const numberedBase = baseName.match(/^(.*)\((\d+)\)$/);
+    const stem = numberedBase ? numberedBase[1] : baseName;
+    let version = numberedBase ? Number(numberedBase[2]) + 1 : 1;
+    let candidate = '';
+    do{
+      candidate = stem + '(' + version + ')' + extension;
+      version++;
+    }while(existingNames.has(candidate.toLocaleLowerCase()));
+    return candidate;
+  }
+
+  async function getSaveDirectoryNames(){
+    const names = new Set<string>();
+    for await (const [name] of saveDirectoryHandle.entries()) names.add(name.toLocaleLowerCase());
+    return names;
+  }
+
+  async function writeFileToSaveDirectory(name: string){
+    const fileHandle = await saveDirectoryHandle.getFileHandle(name, {create:true});
+    const writable = await fileHandle.createWritable();
+    await writable.write(documentText);
+    await writable.close();
+    fileName = name;
+    fileNameDisplay.textContent = fileName;
+  }
+
+  function promptForSaveAsName(initialName: string, message = '保存するファイル名を入力してください'){
+    showFilenamePrompt(message, initialName, (name: string)=>{
+      if(!name) return;
+      void (async()=>{
+        const existingNames = await getSaveDirectoryNames();
+        if(existingNames.has(name.toLocaleLowerCase())){
+          promptForSaveAsName(name, '同じファイル名があります。別のファイル名を入力してください。');
+          return;
+        }
+        await writeFileToSaveDirectory(name);
+      })().catch((error: any)=>showToast('保存できませんでした: ' + (error?.message || '')));
+    });
+  }
+
+  function saveWithBrowserDownload(){
     const blob = new Blob([documentText], {type:'text/plain'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -597,7 +687,45 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  });
+  }
+
+  async function saveDocument(){
+    const showDirectoryPicker = (window as any).showDirectoryPicker;
+    if(typeof showDirectoryPicker !== 'function'){
+      showToast('このブラウザーでは保存先フォルダーを確認できないため、ダウンロードで保存します');
+      saveWithBrowserDownload();
+      return;
+    }
+
+    try{
+      if(!saveDirectoryHandle){
+        saveDirectoryHandle = await showDirectoryPicker.call(window, {id:'ume-neo-save', mode:'readwrite'});
+      }
+      const currentName = fileName || '無題.txt';
+      const existingNames = await getSaveDirectoryNames();
+      if(existingNames.has(currentName.toLocaleLowerCase())){
+        showConfirm(
+          '同じファイル名があります。バージョンを追加して保存しますか？',
+          ()=>{
+            void (async()=>{
+              const latestNames = await getSaveDirectoryNames();
+              const versionName = getNextAvailableVersionName(currentName, latestNames);
+              await writeFileToSaveDirectory(versionName);
+            })().catch((error: any)=>showToast('保存できませんでした: ' + (error?.message || '')));
+          },
+          ()=>promptForSaveAsName(currentName),
+          {ok:'はい', cancel:'いいえ'}
+        );
+        return;
+      }
+      await writeFileToSaveDirectory(currentName);
+    }catch(error: any){
+      if(error?.name === 'AbortError') return;
+      showToast('保存できませんでした: ' + (error?.message || ''));
+    }
+  }
+
+  document.getElementById('btnSave').addEventListener('click', ()=>{ void saveDocument(); });
 
   document.addEventListener('keydown', (event: KeyboardEvent)=>{
     const editorHasFocus = document.activeElement === textarea || document.activeElement === highlightLayer;
