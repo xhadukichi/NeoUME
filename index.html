@@ -15,9 +15,27 @@
     <button id="btnCopy">コピー</button>
     <button id="btnCut">カット</button>
     <button id="btnPaste">ペースト</button>
+    <button id="btnSearch" type="button" aria-label="検索">🔍</button>
     <button id="btnFontSize">文字サイズ: 20px</button>
     <span id="fileNameDisplay">無題.txt</span>
   </div>
+  <section id="searchPanel" role="search" aria-label="検索" hidden>
+    <div class="searchRow">
+      <label for="searchInput">検索ワード</label>
+    <input id="searchInput" type="search" autocomplete="off">
+      <button id="searchPrevious" type="button">↑前検索</button>
+    </div>
+    <div class="searchRow">
+      <label for="replaceInput">置換ワード</label>
+      <input id="replaceInput" type="text" autocomplete="off">
+      <button id="searchNext" type="button">↓次検索</button>
+    </div>
+    <div class="searchActions">
+      <button id="replaceCurrent" type="button">置換実行</button>
+      <button id="searchClose" type="button">キャンセル</button>
+    </div>
+    <div id="searchMessage" role="status" aria-live="polite"></div>
+  </section>
   <div id="spacer"></div>
 
   <div id="mainArea">

@@ -100,3 +100,29 @@
     max-width:85vw; text-align:center;
   }
   #toast.show{ opacity:1; }
+
+  #searchPanel{
+    position:fixed; z-index:99; top:var(--toolbar-bottom,60px); left:50%; transform:translateX(-50%);
+    width:min(100vw, 520px); display:grid; grid-template-columns:88px minmax(0,1fr) 88px;
+    align-items:center; gap:6px; padding:10px; background:var(--toolbar-bg);
+    border:1px solid var(--border); border-top:0; box-shadow:0 3px 10px rgba(0,0,0,0.12);
+  }
+  #searchPanel[hidden]{ display:none; }
+  #searchPanel .searchRow{ display:grid; grid-column:1 / -1; grid-template-columns:88px minmax(0,1fr) 88px; align-items:center; gap:6px; }
+  #searchPanel label{ font-size:13px; white-space:nowrap; }
+  #searchPanel input{
+    grid-column:2; width:100%; min-width:0; padding:7px 8px; border:1px solid var(--btn-border);
+    border-radius:6px; background:var(--bg); color:var(--fg); font-size:16px;
+  }
+  #searchPanel button{
+    padding:6px 8px; border:1px solid var(--btn-border); border-radius:6px;
+    background:var(--btn-bg); color:var(--fg); font-size:13px; white-space:nowrap;
+  }
+  #searchPanel #searchPrevious, #searchPanel #searchNext{ grid-column:3; }
+  #searchPanel .searchActions{ grid-column:1 / -1; display:flex; gap:8px; }
+  #searchPanel .searchActions button{ flex:1; }
+  #searchMessage{
+    grid-column:1 / -1; min-height:1em; padding-top:6px; border-top:1px solid var(--border);
+    font-size:13px; overflow-wrap:anywhere;
+  }
+  #highlightLayer .searchHit{ background:#ffe66d; color:#111; border-radius:2px; }

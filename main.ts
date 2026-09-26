@@ -14,6 +14,11 @@
   const modalOk = document.getElementById('modalOk');
   const modalCancel = document.getElementById('modalCancel');
   const toast = document.getElementById('toast');
+  const searchPanel = document.getElementById('searchPanel') as HTMLElement;
+  const searchInput = document.getElementById('searchInput') as HTMLInputElement;
+  const replaceInput = document.getElementById('replaceInput') as HTMLInputElement;
+  const searchMessage = document.getElementById('searchMessage') as HTMLElement;
+  let activeSearchMatch: {start: number; end: number; query: string} | null = null;
 
   // --- custom modal helpers (window.confirm/alert can be silently blocked inside sandboxed pages) ---
   function showConfirm(message, onConfirm){
@@ -43,8 +48,34 @@
   let documentSelectionEnd = 0;
   let editContext = null;
   let isComposing = false;
+  const undoStack: Array<{text: string; selectionStart: number; selectionEnd: number}> = [];
+
+  function recordUndoState(){
+    undoStack.push({
+      text: documentText,
+      selectionStart: documentSelectionStart,
+      selectionEnd: documentSelectionEnd
+    });
+  }
+
+  function undoDocument(){
+    const previous = undoStack.pop();
+    if(!previous) return;
+
+    documentText = previous.text;
+    textarea.value = documentText;
+    documentSelectionStart = previous.selectionStart;
+    documentSelectionEnd = previous.selectionEnd;
+    textarea.setSelectionRange(documentSelectionStart, documentSelectionEnd);
+    if(editContext){
+      editContext.updateText(0, editContext.text.length, documentText);
+      editContext.updateSelection(documentSelectionStart, documentSelectionEnd);
+    }
+    fullUpdate();
+  }
 
   function setDocumentText(text){
+    undoStack.length = 0;
     textarea.value = text;
     documentText = textarea.value;
     documentSelectionStart = textarea.selectionStart;
@@ -58,6 +89,7 @@
   // --- toolbar height sync (keeps layout space reserved for the fixed toolbar) ---
   function syncToolbarHeight(){
     spacer.style.height = toolbar.offsetHeight + 'px';
+    document.documentElement.style.setProperty('--toolbar-bottom', toolbar.offsetHeight + 'px');
   }
   new ResizeObserver(syncToolbarHeight).observe(toolbar);
   window.addEventListener('resize', syncToolbarHeight);
@@ -69,6 +101,7 @@
     const vv = window.visualViewport;
     const offsetY = (vv ? vv.offsetTop : 0) + (window.scrollY || 0);
     toolbar.style.top = offsetY + 'px';
+    searchPanel.style.top = (offsetY + toolbar.offsetHeight) + 'px';
     if(vv){
       toolbar.style.width = vv.width + 'px';
       toolbar.style.left = vv.offsetLeft + 'px';
@@ -97,15 +130,97 @@
 
   // --- highlight layer (colored heading lines inside editor) ---
   function renderHighlight(){
+    if(activeSearchMatch && documentText.slice(activeSearchMatch.start, activeSearchMatch.end) !== activeSearchMatch.query){
+      activeSearchMatch = null;
+    }
+    let documentOffset = 0;
     const lines = documentText.split('\n');
     const html = lines.map(line=>{
-      const h = headingLevel(line);
-      if(h){
-        return '<span class="h' + h.level + '">' + esc(line) + '</span>';
+      const lineStart = documentOffset;
+      documentOffset += line.length + 1;
+      const match = activeSearchMatch;
+      let content = esc(line);
+      if(match && match.end > lineStart && match.start < lineStart + line.length){
+        const from = Math.max(0, match.start - lineStart);
+        const to = Math.min(line.length, match.end - lineStart);
+        content = esc(line.slice(0, from)) + '<span class="searchHit">' + esc(line.slice(from, to)) + '</span>' + esc(line.slice(to));
       }
-      return esc(line) === '' ? ' ' : esc(line);
+      const h = headingLevel(line);
+      if(h) return '<span class="h' + h.level + '">' + content + '</span>';
+      return content === '' ? '\u200b' : content;
     }).join('\n');
     highlightLayer.innerHTML = html;
+  }
+
+  function renderedOffsetForDocumentOffset(offset: number){
+    const lines = documentText.split('\n');
+    let documentPosition = 0;
+    let renderedPosition = 0;
+    for(let i = 0; i < lines.length; i++){
+      const lineLength = lines[i].length;
+      if(offset <= documentPosition + lineLength) return renderedPosition + offset - documentPosition;
+      documentPosition += lineLength;
+      renderedPosition += Math.max(lineLength, 1);
+      if(i < lines.length - 1){ documentPosition++; renderedPosition++; }
+    }
+    return renderedPosition;
+  }
+
+  function findRenderedDOMPosition(renderedOffset: number){
+    const walker = document.createTreeWalker(highlightLayer, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    let traversed = 0;
+    while((node = walker.nextNode())){
+      const length = node.textContent?.length ?? 0;
+      if(renderedOffset <= traversed + length) return {node, offset: renderedOffset - traversed};
+      traversed += length;
+    }
+    return null;
+  }
+
+  function scrollToSearchMatch(start: number, end: number){
+    const range = document.createRange();
+    const rangeStart = findRenderedDOMPosition(renderedOffsetForDocumentOffset(start));
+    const rangeEnd = findRenderedDOMPosition(renderedOffsetForDocumentOffset(end));
+    if(!rangeStart || !rangeEnd) return;
+    range.setStart(rangeStart.node, rangeStart.offset);
+    range.setEnd(rangeEnd.node, rangeEnd.offset);
+    const rect = range.getBoundingClientRect();
+    const wrapperRect = editorWrapper.getBoundingClientRect();
+    if(rect.height){
+      editorWrapper.scrollTop += rect.top - wrapperRect.top - editorWrapper.clientHeight / 2 + rect.height / 2;
+    }
+  }
+
+  function searchFrom(direction: 1 | -1){
+    const query = searchInput.value;
+    if(!query){
+      searchMessage.textContent = '';
+      activeSearchMatch = null;
+      renderHighlight();
+      return;
+    }
+    const current = getEditorSelection();
+    let found = -1;
+    if(direction > 0){
+      const from = activeSearchMatch?.query === query ? activeSearchMatch.end : current.end;
+      found = documentText.indexOf(query, from);
+      if(found < 0) found = documentText.indexOf(query, 0);
+    } else {
+      const from = activeSearchMatch?.query === query ? activeSearchMatch.start - 1 : current.start - 1;
+      found = documentText.lastIndexOf(query, from);
+      if(found < 0) found = documentText.lastIndexOf(query);
+    }
+    if(found < 0){
+      searchMessage.textContent = '検索ワードが見つかりませんでした';
+      activeSearchMatch = null;
+      renderHighlight();
+      return;
+    }
+    searchMessage.textContent = '';
+    activeSearchMatch = {start:found, end:found + query.length, query};
+    renderHighlight();
+    scrollToSearchMatch(activeSearchMatch.start, activeSearchMatch.end);
   }
 
   // Convert the browser's DOM caret position in the rendered highlight layer
@@ -311,6 +426,7 @@
 
   // --- events ---
   textarea.addEventListener('input', ()=>{
+    if(textarea.value !== documentText) recordUndoState();
     documentText = textarea.value;
     documentSelectionStart = textarea.selectionStart;
     documentSelectionEnd = textarea.selectionEnd;
@@ -364,7 +480,11 @@
         getRenderedOffset(selection.focusNode, selection.focusOffset)
       );
       const start = Math.min(anchor, focus);
-      const end = Math.max(anchor, focus);
+      let end = Math.max(anchor, focus);
+      const renderedSelectionText = selection.toString();
+      if(documentText.slice(start, end).includes('\n') && !renderedSelectionText.includes('\n')){
+        end = Math.min(end, start + renderedSelectionText.replace(/\u200b/g, '').length);
+      }
       const changed = start !== editContext.selectionStart || end !== editContext.selectionEnd;
       if(changed){
         documentSelectionStart = start;
@@ -392,6 +512,7 @@
       const start = Math.min(editContext.selectionStart, editContext.selectionEnd);
       const end = Math.max(editContext.selectionStart, editContext.selectionEnd);
       const newPosition = start + 1;
+      recordUndoState();
       documentText = documentText.slice(0, start) + '\n' + documentText.slice(end);
       editContext.updateText(start, end, '\n');
       editContext.updateSelection(newPosition, newPosition);
@@ -407,6 +528,7 @@
     editContext.addEventListener('textupdate', (event: any)=>{
       const start = Math.min(event.updateRangeStart, event.updateRangeEnd);
       const end = Math.max(event.updateRangeStart, event.updateRangeEnd);
+      recordUndoState();
       documentText = documentText.slice(0, start) + event.text + documentText.slice(end);
       documentSelectionStart = event.selectionStart;
       documentSelectionEnd = event.selectionEnd;
@@ -465,10 +587,54 @@
     URL.revokeObjectURL(url);
   });
 
+  document.addEventListener('keydown', (event: KeyboardEvent)=>{
+    const editorHasFocus = document.activeElement === textarea || document.activeElement === highlightLayer;
+    const modifierPressed = event.ctrlKey || event.metaKey;
+    if(modifierPressed && event.key.toLowerCase() === 'f' && (editorHasFocus || searchPanel.contains(document.activeElement))){
+      event.preventDefault();
+      openSearchPanel();
+      return;
+    }
+    if(!editorHasFocus || !modifierPressed) return;
+
+    const shortcuts: Record<string, string> = {
+      s: 'btnSave',
+      o: 'btnOpen',
+      n: 'btnNew',
+      c: 'btnCopy',
+      x: 'btnCut',
+      v: 'btnPaste'
+    };
+    const buttonId = shortcuts[event.key.toLowerCase()];
+    if(buttonId){
+      event.preventDefault();
+      (document.getElementById(buttonId) as HTMLButtonElement).click();
+      return;
+    }
+
+    if(event.key.toLowerCase() === 'z'){
+      event.preventDefault();
+      undoDocument();
+      return;
+    }
+
+    if(event.key.toLowerCase() === 'a'){
+      event.preventDefault();
+      focusEditorAtSelection(0, documentText.length);
+    }
+  });
   function getEditorSelection(){
-    const start = editContext ? editContext.selectionStart : textarea.selectionStart;
-    const end = editContext ? editContext.selectionEnd : textarea.selectionEnd;
-    return {start:Math.min(start, end), end:Math.max(start, end)};
+    const rawStart = editContext ? editContext.selectionStart : textarea.selectionStart;
+    const rawEnd = editContext ? editContext.selectionEnd : textarea.selectionEnd;
+    const start = Math.min(rawStart, rawEnd);
+    let end = Math.max(rawStart, rawEnd);
+    const renderedSelectionText = editContext && document.activeElement === highlightLayer
+      ? document.getSelection()?.toString() ?? ''
+      : textarea.value.slice(start, end);
+    if(documentText.slice(start, end).includes('\n') && !renderedSelectionText.includes('\n')){
+      end = Math.min(end, start + renderedSelectionText.replace(/\u200b/g, '').length);
+    }
+    return {start, end};
   }
 
   function focusEditorAtSelection(start: number, end: number){
@@ -485,6 +651,7 @@
   }
 
   function replaceEditorRange(start: number, end: number, replacement: string){
+    recordUndoState();
     const nextText = documentText.slice(0, start) + replacement + documentText.slice(end);
     const nextPosition = start + replacement.length;
     documentText = nextText;
@@ -598,6 +765,49 @@
       return pasted;
     }
   });
+  // --- search panel and navigation ---
+  function openSearchPanel(){
+    searchPanel.hidden = false;
+    searchInput.focus();
+    searchInput.select();
+  }
+  document.getElementById('btnSearch').addEventListener('click', openSearchPanel);
+  document.getElementById('searchNext').addEventListener('click', ()=>searchFrom(1));
+  document.getElementById('searchPrevious').addEventListener('click', ()=>searchFrom(-1));
+  document.getElementById('replaceCurrent').addEventListener('click', ()=>{
+    if(!activeSearchMatch || documentText.slice(activeSearchMatch.start, activeSearchMatch.end) !== activeSearchMatch.query){
+      searchMessage.textContent = '先に検索してください';
+      return;
+    }
+    const replaceCurrentMatch = ()=>{
+      const matchStart = activeSearchMatch.start;
+      const matchEnd = activeSearchMatch.end;
+      replaceEditorRange(matchStart, matchEnd, replaceInput.value);
+      activeSearchMatch = null;
+      searchInput.focus();
+      searchFrom(1);
+    };
+    if(replaceInput.value === ''){
+      showConfirm('置換ワードがありません。削除を強行しますか？', replaceCurrentMatch);
+      return;
+    }
+    replaceCurrentMatch();
+  });
+  document.getElementById('searchClose').addEventListener('click', ()=>{
+    const selection = getEditorSelection();
+    searchPanel.hidden = true;
+    searchMessage.textContent = '';
+    activeSearchMatch = null;
+    renderHighlight();
+
+    focusEditorAtSelection(selection.start, selection.end);
+  });
+  searchInput.addEventListener('input', ()=>{
+    searchMessage.textContent = '';
+    activeSearchMatch = null;
+    renderHighlight();
+  });
+
   // --- font size (16 / 20 / 24px, default 20px) ---
   const fontSizes = [16, 20, 24];
   let fontSizeIndex = 1;
