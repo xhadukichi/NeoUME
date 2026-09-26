@@ -575,12 +575,21 @@
     fileInput.value = '';
   });
 
+  function incrementExistingDownloadSuffix(name: string){
+    const extensionIndex = name.lastIndexOf('.');
+    const hasExtension = extensionIndex > 0;
+    const baseName = hasExtension ? name.slice(0, extensionIndex) : name;
+    const extension = hasExtension ? name.slice(extensionIndex) : '';
+    const numberedBase = baseName.match(/^(.*)\((\d+)\)$/);
+    if(!numberedBase) return name;
+    return numberedBase[1] + '(' + (Number(numberedBase[2]) + 1) + ')' + extension;
+  }
   document.getElementById('btnSave').addEventListener('click', ()=>{
     const blob = new Blob([documentText], {type:'text/plain'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileName || '無題.txt';
+    a.download = incrementExistingDownloadSuffix(fileName || '無題.txt');
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
