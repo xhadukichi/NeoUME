@@ -421,7 +421,7 @@
     renderHighlight();
     renderOutline();
     updateCaretUI();
-    if(editContext) syncDOMSelectionToEditContext();
+    if(editContext && !searchPanel.contains(document.activeElement)) syncDOMSelectionToEditContext();
   }
 
   // --- events ---
