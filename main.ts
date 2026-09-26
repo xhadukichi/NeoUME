@@ -589,7 +589,10 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = incrementExistingDownloadSuffix(fileName || '無題.txt');
+    const nextFileName = incrementExistingDownloadSuffix(fileName || '無題.txt');
+    a.download = nextFileName;
+    fileName = nextFileName;
+    fileNameDisplay.textContent = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
