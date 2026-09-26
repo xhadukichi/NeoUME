@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>アウトラインエディタ</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <div id="toolbar">
+    <button id="btnNew">新規</button>
+    <button id="btnOpen">開く</button>
+    <button id="btnSave">保存</button>
+    <button id="btnCopy">コピー</button>
+    <button id="btnCut">カット</button>
+    <button id="btnPaste">ペースト</button>
+    <button id="btnFontSize">文字サイズ: 20px</button>
+    <span id="fileNameDisplay">無題.txt</span>
+  </div>
+  <div id="spacer"></div>
+
+  <div id="mainArea">
+    <div id="outlineArea"><div id="outlineEmpty">見出し（# ）がここに表示されます</div></div>
+
+    <div id="editorWrapper">
+      <div id="currentLineLayer"></div>
+      <div id="highlightLayer" class="editorFont"></div>
+      <div id="caretMirror" class="editorFont"></div>
+      <textarea id="editorTextarea" class="editorFont" spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept=".txt,.md" style="display:none;">
+
+  <div id="modalOverlay">
+    <div id="modalBox">
+      <div id="modalMessage"></div>
+      <div id="modalButtons">
+        <button id="modalCancel">キャンセル</button>
+        <button id="modalOk">OK</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast"></div>
+
+<script type="module" src="/main.ts"></script>
+</body>
+</html>

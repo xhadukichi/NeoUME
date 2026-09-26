@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>アウトラインエディタ</title>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#222222; --toolbar-bg:#f2f2f4; --border:#d7d7db;
+    --outline-bg:#fafafa; --editor-bg:#ffffff; --btn-bg:#ffffff; --btn-border:#c8c8cc;
+    --h1:#e24646; --h2:#137400; --h3:#fa7305; --h4:#9334e6; --curline:#ffe5e5;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+    box-sizing:border-box;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1e1f22; --fg:#e6e6e6; --toolbar-bg:#2a2b2e; --border:#3d3e42;
+      --outline-bg:#232427; --editor-bg:#1e1f22; --btn-bg:#2f3033; --btn-border:#4a4b4f;
+      --h1:#f88a8a; --h2:#eec46b; --h3:#81c995; --h4:#d7aefb; --curline:#4a2222;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1e1f22; --fg:#e6e6e6; --toolbar-bg:#2a2b2e; --border:#3d3e42;
+    --outline-bg:#232427; --editor-bg:#1e1f22; --btn-bg:#2f3033; --btn-border:#4a4b4f;
+    --h1:#f88a8a; --h2:#eec46b; --h3:#81c995; --h4:#d7aefb; --curline:#4a2222;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%; margin:0; background:var(--bg); color:var(--fg); font-family:sans-serif;}
+  body{display:flex; flex-direction:column; height:100dvh; overflow:hidden;}
+
+  #toolbar{
+    position:fixed; top:0; left:0; right:0; z-index:100;
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    padding:6px 8px; padding-top:calc(6px + env(safe-area-inset-top,0px));
+    background:var(--toolbar-bg); border-bottom:1px solid var(--border);
+  }
+  #toolbar button{
+    padding:6px 10px; font-size:13px; border-radius:6px;
+    border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--fg); cursor:pointer;
+  }
+  #toolbar button:active{ filter:brightness(0.9); }
+  #fileNameDisplay{ margin-left:auto; font-size:13px; opacity:0.75; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:40vw; }
+
+  #spacer{ flex:0 0 auto; }
+
+  #mainArea{ flex:1; min-height:0; display:flex; flex-direction:column; }
+
+  #outlineArea{
+    flex:0 0 20%; overflow:auto; white-space:nowrap; background:var(--outline-bg);
+    border-bottom:2px solid var(--border); font-family:monospace; font-size:13px; padding:4px 8px;
+  }
+  .outline-item{ white-space:pre; padding:2px 0; cursor:pointer; }
+  .outline-item:hover{ text-decoration:underline; }
+  .oh1{ color:var(--h1); font-weight:bold; }
+  .oh2{ color:var(--h2); font-weight:bold; }
+  .oh3{ color:var(--h3); }
+  .oh4{ color:var(--h4); }
+  #outlineEmpty{ opacity:0.5; font-size:12px; }
+
+  #editorWrapper{ flex:1; min-height:0; position:relative; overflow:auto; background:var(--editor-bg); }
+
+  .editorFont{
+    font-family:monospace; font-size:var(--editor-font-size, 20px); line-height:1.6;
+    white-space:pre-wrap; word-wrap:break-word; word-break:break-word;
+    padding:8px 10px; margin:0; border:none;
+  }
+
+  #currentLineLayer{ position:absolute; top:0; left:0; right:0; z-index:0; pointer-events:none; }
+  #currentLineLayer .cur{ position:absolute; left:0; right:0; border-bottom:2px solid #e53935; background:var(--curline); opacity:0.5; }
+
+  #highlightLayer{ position:absolute; top:0; left:0; right:0; z-index:1; pointer-events:none; color:var(--fg); }
+  #highlightLayer .h1{ color:var(--h1); font-weight:bold; }
+  #highlightLayer .h2{ color:var(--h2); font-weight:bold; }
+  #highlightLayer .h3{ color:var(--h3); font-weight:bold; }
+  #highlightLayer .h4{ color:var(--h4); font-weight:bold; }
+
+  #editorTextarea{
+    position:absolute; top:0; left:0; right:0; width:100%;
+    z-index:2; background:transparent; color:transparent; caret-color:var(--fg);
+    resize:none; overflow:hidden; outline:none;
+  }
+
+  #caretMirror{ position:absolute; top:0; left:0; width:100%; visibility:hidden; z-index:-1; }
+
+  /* custom modal (replaces window.confirm / alert, which browsers can block inside sandboxed pages) */
+  #modalOverlay{
+    position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.4);
+    display:none; align-items:center; justify-content:center;
+  }
+  #modalOverlay.show{ display:flex; }
+  #modalBox{
+    background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:10px;
+    padding:16px; max-width:80vw; box-shadow:0 4px 20px rgba(0,0,0,0.3);
+  }
+  #modalMessage{ margin-bottom:14px; font-size:14px; white-space:pre-wrap; }
+  #modalButtons{ display:flex; justify-content:flex-end; gap:8px; }
+  #modalButtons button{
+    padding:6px 14px; font-size:13px; border-radius:6px;
+    border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--fg); cursor:pointer;
+  }
+
+  #toast{
+    position:fixed; left:50%; bottom:16px; transform:translateX(-50%);
+    background:var(--toolbar-bg); color:var(--fg); border:1px solid var(--border);
+    padding:8px 14px; border-radius:8px; font-size:13px; z-index:1000;
+    opacity:0; pointer-events:none; transition:opacity 0.2s;
+    max-width:85vw; text-align:center;
+  }
+  #toast.show{ opacity:1; }
+</style>
+</head>
+<body>
+
+  <div id="toolbar">
+    <button id="btnNew">新規</button>
+    <button id="btnOpen">開く</button>
+    <button id="btnSave">保存</button>
+    <button id="btnCopy">コピー</button>
+    <button id="btnCut">カット</button>
+    <button id="btnPaste">ペースト</button>
+    <button id="btnFontSize">文字サイズ: 20px</button>
+    <span id="fileNameDisplay">無題.txt</span>
+  </div>
+  <div id="spacer"></div>
+
+  <div id="mainArea">
+    <div id="outlineArea"><div id="outlineEmpty">見出し（# ）がここに表示されます</div></div>
+
+    <div id="editorWrapper">
+      <div id="currentLineLayer"></div>
+      <div id="highlightLayer" class="editorFont"></div>
+      <div id="caretMirror" class="editorFont"></div>
+      <textarea id="editorTextarea" class="editorFont" spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept=".txt,.md" style="display:none;">
+
+  <div id="modalOverlay">
+    <div id="modalBox">
+      <div id="modalMessage"></div>
+      <div id="modalButtons">
+        <button id="modalCancel">キャンセル</button>
+        <button id="modalOk">OK</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast"></div>
+
+<script>
+(function(){
+  const toolbar = document.getElementById('toolbar');
+  const spacer = document.getElementById('spacer');
+  const outlineArea = document.getElementById('outlineArea');
+  const editorWrapper = document.getElementById('editorWrapper');
+  const currentLineLayer = document.getElementById('currentLineLayer');
+  const highlightLayer = document.getElementById('highlightLayer');
+  const caretMirror = document.getElementById('caretMirror');
+  const textarea = document.getElementById('editorTextarea');
+  const fileNameDisplay = document.getElementById('fileNameDisplay');
+  const fileInput = document.getElementById('fileInput');
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalMessage = document.getElementById('modalMessage');
+  const modalOk = document.getElementById('modalOk');
+  const modalCancel = document.getElementById('modalCancel');
+  const toast = document.getElementById('toast');
+
+  // --- custom modal helpers (window.confirm/alert can be silently blocked inside sandboxed pages) ---
+  function showConfirm(message, onConfirm){
+    modalMessage.textContent = message;
+    modalOverlay.classList.add('show');
+    const cleanup = ()=>{
+      modalOverlay.classList.remove('show');
+      modalOk.removeEventListener('click', okHandler);
+      modalCancel.removeEventListener('click', cancelHandler);
+    };
+    const okHandler = ()=>{ cleanup(); onConfirm(); };
+    const cancelHandler = ()=>{ cleanup(); };
+    modalOk.addEventListener('click', okHandler);
+    modalCancel.addEventListener('click', cancelHandler);
+  }
+  let toastTimer = null;
+  function showToast(message){
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> toast.classList.remove('show'), 2500);
+  }
+
+  let fileName = '無題.txt';
+
+  // --- toolbar height sync (keeps layout space reserved for the fixed toolbar) ---
+  function syncToolbarHeight(){
+    spacer.style.height = toolbar.offsetHeight + 'px';
+  }
+  new ResizeObserver(syncToolbarHeight).observe(toolbar);
+  window.addEventListener('resize', syncToolbarHeight);
+  syncToolbarHeight();
+
+  // --- pin toolbar to the true visible top, even when IME/soft keyboard
+  //     shifts the visual viewport on mobile (known iOS/Android fixed-position bug) ---
+  function pinToolbar(){
+    const vv = window.visualViewport;
+    const offsetY = (vv ? vv.offsetTop : 0) + (window.scrollY || 0);
+    toolbar.style.top = offsetY + 'px';
+    if(vv){
+      toolbar.style.width = vv.width + 'px';
+      toolbar.style.left = vv.offsetLeft + 'px';
+    }
+  }
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', pinToolbar);
+    window.visualViewport.addEventListener('scroll', pinToolbar);
+  }
+  window.addEventListener('scroll', pinToolbar);
+  window.addEventListener('resize', pinToolbar);
+  pinToolbar();
+
+  function esc(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // --- heading parse ---
+  function headingLevel(line){
+    const m = line.match(/^(#{1,4}) (.*)$/);
+    return m ? { level: m[1].length, text: m[2] } : null;
+  }
+
+  // --- highlight layer (colored heading lines inside editor) ---
+  function renderHighlight(){
+    const lines = textarea.value.split('\n');
+    const html = lines.map(line=>{
+      const h = headingLevel(line);
+      if(h){
+        return '<span class="h' + h.level + '">' + esc(line) + '</span>';
+      }
+      return esc(line) === '' ? ' ' : esc(line);
+    }).join('\n');
+    highlightLayer.innerHTML = html;
+  }
+
+  // --- outline tree ---
+  function renderOutline(){
+    const lines = textarea.value.split('\n');
+    const items = [];
+    lines.forEach((line, idx)=>{
+      const h = headingLevel(line);
+      if(h) items.push({level:h.level, text:h.text, lineIndex:idx});
+    });
+    outlineArea.innerHTML = '';
+    if(items.length === 0){
+      const empty = document.createElement('div');
+      empty.id = 'outlineEmpty';
+      empty.textContent = '見出し（# ）がここに表示されます';
+      outlineArea.appendChild(empty);
+      return;
+    }
+    items.forEach(item=>{
+      const div = document.createElement('div');
+      div.className = 'outline-item oh' + item.level;
+      div.textContent = ' '.repeat(item.level - 1) + '▼' + item.text;
+      div.addEventListener('click', ()=>{
+        jumpToLine(item.lineIndex);
+      });
+      outlineArea.appendChild(div);
+    });
+  }
+
+  function jumpToLine(lineIndex){
+    const lines = textarea.value.split('\n');
+    let offset = 0;
+    for(let i=0;i<lineIndex;i++) offset += lines[i].length + 1;
+    textarea.focus();
+    textarea.setSelectionRange(offset, offset);
+    updateCaretUI();
+  }
+
+  // --- caret position / current-line underline / auto-scroll ---
+  function measureCaret(){
+    const pos = textarea.selectionStart;
+    const before = textarea.value.substring(0, pos);
+    const after = textarea.value.substring(pos);
+    caretMirror.innerHTML = esc(before) + '<span id="caretMarker"> </span>' + esc(after);
+    const marker = document.getElementById('caretMarker');
+    return { top: marker.offsetTop, height: marker.offsetHeight || 24 };
+  }
+
+  function syncHeights(){
+    textarea.style.height = 'auto';
+    const h = Math.max(textarea.scrollHeight, editorWrapper.clientHeight);
+    textarea.style.height = h + 'px';
+    highlightLayer.style.height = h + 'px';
+    caretMirror.style.height = h + 'px';
+  }
+
+  function updateCaretUI(){
+    syncHeights();
+    const { top, height } = measureCaret();
+
+    // current line underline
+    currentLineLayer.innerHTML = '';
+    const cur = document.createElement('div');
+    cur.className = 'cur';
+    cur.style.top = top + 'px';
+    cur.style.height = height + 'px';
+    currentLineLayer.appendChild(cur);
+
+    // auto-scroll: keep caret line at "second from bottom", not the very bottom
+    const wrapperHeight = editorWrapper.clientHeight;
+    const scrollTop = editorWrapper.scrollTop;
+    const caretBottom = top + height;
+
+    if (caretBottom > scrollTop + wrapperHeight - height) {
+      editorWrapper.scrollTop = caretBottom - wrapperHeight + height;
+    }
+    if (top < scrollTop) {
+      editorWrapper.scrollTop = top;
+    }
+  }
+
+  function fullUpdate(){
+    renderHighlight();
+    renderOutline();
+    updateCaretUI();
+  }
+
+  // --- events ---
+  textarea.addEventListener('input', fullUpdate);
+  textarea.addEventListener('click', updateCaretUI);
+  textarea.addEventListener('keyup', updateCaretUI);
+  textarea.addEventListener('scroll', ()=>{ /* wrapper handles scroll via CSS since textarea overflow hidden */ });
+  editorWrapper.addEventListener('scroll', ()=>{
+    // keep layers aligned is automatic since they're absolutely positioned within the same scrolling wrapper
+  });
+  document.addEventListener('selectionchange', ()=>{
+    if(document.activeElement === textarea) updateCaretUI();
+  });
+  window.addEventListener('resize', fullUpdate);
+
+  // --- toolbar actions ---
+  document.getElementById('btnNew').addEventListener('click', ()=>{
+    if(textarea.value.length > 0){
+      showConfirm('編集中の内容は破棄されます。新規作成しますか？', ()=>{
+        textarea.value = '';
+        fileName = '無題.txt';
+        fileNameDisplay.textContent = fileName;
+        fullUpdate();
+      });
+    } else {
+      textarea.value = '';
+      fileName = '無題.txt';
+      fileNameDisplay.textContent = fileName;
+      fullUpdate();
+    }
+  });
+
+  document.getElementById('btnOpen').addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      textarea.value = ev.target.result;
+      fileName = file.name;
+      fileNameDisplay.textContent = fileName;
+      fullUpdate();
+    };
+    reader.readAsText(file);
+    fileInput.value = '';
+  });
+
+  document.getElementById('btnSave').addEventListener('click', ()=>{
+    const blob = new Blob([textarea.value], {type:'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || '無題.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  async function getSelectedOrAll(){
+    const s = textarea.selectionStart, e = textarea.selectionEnd;
+    return s !== e ? textarea.value.substring(s, e) : textarea.value;
+  }
+
+  document.getElementById('btnCopy').addEventListener('click', async ()=>{
+    try{
+      const text = await getSelectedOrAll();
+      await navigator.clipboard.writeText(text);
+    }catch(err){ showToast('コピーに失敗しました: ' + err.message); }
+  });
+
+  document.getElementById('btnCut').addEventListener('click', async ()=>{
+    try{
+      const s = textarea.selectionStart, e = textarea.selectionEnd;
+      const text = s !== e ? textarea.value.substring(s, e) : textarea.value;
+      await navigator.clipboard.writeText(text);
+      if(s !== e){
+        textarea.value = textarea.value.slice(0, s) + textarea.value.slice(e);
+        textarea.setSelectionRange(s, s);
+      } else {
+        textarea.value = '';
+      }
+      fullUpdate();
+    }catch(err){ showToast('カットに失敗しました: ' + err.message); }
+  });
+
+  document.getElementById('btnPaste').addEventListener('click', async ()=>{
+    try{
+      const text = await navigator.clipboard.readText();
+      const s = textarea.selectionStart, e = textarea.selectionEnd;
+      textarea.value = textarea.value.slice(0, s) + text + textarea.value.slice(e);
+      const newPos = s + text.length;
+      textarea.focus();
+      textarea.setSelectionRange(newPos, newPos);
+      fullUpdate();
+    }catch(err){ showToast('ペーストに失敗しました（クリップボードへのアクセス許可が必要です）: ' + err.message); }
+  });
+
+  // --- font size (16 / 20 / 24px, default 20px) ---
+  const fontSizes = [16, 20, 24];
+  let fontSizeIndex = 1;
+  const btnFontSize = document.getElementById('btnFontSize');
+  function applyFontSize(){
+    const size = fontSizes[fontSizeIndex];
+    document.documentElement.style.setProperty('--editor-font-size', size + 'px');
+    btnFontSize.textContent = '文字サイズ: ' + size + 'px';
+    fullUpdate();
+  }
+  btnFontSize.addEventListener('click', ()=>{
+    fontSizeIndex = (fontSizeIndex + 1) % fontSizes.length;
+    applyFontSize();
+  });
+
+  // init
+  textarea.value = '# 見出しレベル１\nここに本文を入力してください。\n\n## 見出しレベル２\n本文はエディタ幅で自動的に折り返されます。';
+  fullUpdate();
+})();
+</script>
+</body>
+</html>

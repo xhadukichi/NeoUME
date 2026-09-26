@@ -1,0 +1,102 @@
+  :root{
+    --bg:#ffffff; --fg:#222222; --toolbar-bg:#f2f2f4; --border:#d7d7db;
+    --outline-bg:#fafafa; --editor-bg:#ffffff; --btn-bg:#ffffff; --btn-border:#c8c8cc;
+    --h1:#e24646; --h2:#137400; --h3:#fa7305; --h4:#9334e6; --curline:#ffe5e5;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+    box-sizing:border-box;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1e1f22; --fg:#e6e6e6; --toolbar-bg:#2a2b2e; --border:#3d3e42;
+      --outline-bg:#232427; --editor-bg:#1e1f22; --btn-bg:#2f3033; --btn-border:#4a4b4f;
+      --h1:#f88a8a; --h2:#eec46b; --h3:#81c995; --h4:#d7aefb; --curline:#4a2222;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1e1f22; --fg:#e6e6e6; --toolbar-bg:#2a2b2e; --border:#3d3e42;
+    --outline-bg:#232427; --editor-bg:#1e1f22; --btn-bg:#2f3033; --btn-border:#4a4b4f;
+    --h1:#f88a8a; --h2:#eec46b; --h3:#81c995; --h4:#d7aefb; --curline:#4a2222;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%; margin:0; background:var(--bg); color:var(--fg); font-family:sans-serif;}
+  body{display:flex; flex-direction:column; height:100dvh; overflow:hidden;}
+
+  #toolbar{
+    position:fixed; top:0; left:0; right:0; z-index:100;
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    padding:6px 8px; padding-top:calc(6px + env(safe-area-inset-top,0px));
+    background:var(--toolbar-bg); border-bottom:1px solid var(--border);
+  }
+  #toolbar button{
+    padding:6px 10px; font-size:13px; border-radius:6px;
+    border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--fg); cursor:pointer;
+  }
+  #toolbar button:active{ filter:brightness(0.9); }
+  #fileNameDisplay{ margin-left:auto; font-size:13px; opacity:0.75; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:40vw; }
+
+  #spacer{ flex:0 0 auto; }
+
+  #mainArea{ flex:1; min-height:0; display:flex; flex-direction:column; }
+
+  #outlineArea{
+    flex:0 0 20%; overflow:auto; white-space:nowrap; background:var(--outline-bg);
+    border-bottom:2px solid var(--border); font-family:monospace; font-size:13px; padding:4px 8px;
+  }
+  .outline-item{ white-space:pre; padding:2px 0; cursor:pointer; }
+  .outline-item:hover{ text-decoration:underline; }
+  .oh1{ color:var(--h1); font-weight:bold; }
+  .oh2{ color:var(--h2); font-weight:bold; }
+  .oh3{ color:var(--h3); }
+  .oh4{ color:var(--h4); }
+  #outlineEmpty{ opacity:0.5; font-size:12px; }
+
+  #editorWrapper{ flex:1; min-height:0; position:relative; overflow:auto; background:var(--editor-bg); }
+
+  .editorFont{
+    font-family:monospace; font-size:var(--editor-font-size, 20px); line-height:1.6;
+    white-space:pre-wrap; word-wrap:break-word; word-break:break-word;
+    padding:8px 10px; margin:0; border:none;
+  }
+
+  #currentLineLayer{ position:absolute; top:0; left:0; right:0; z-index:0; pointer-events:none; }
+  #currentLineLayer .cur{ position:absolute; left:0; right:0; border-bottom:2px solid #e53935; background:var(--curline); opacity:0.5; }
+
+  #highlightLayer{ position:absolute; top:0; left:0; right:0; z-index:1; pointer-events:none; color:var(--fg); }
+  #highlightLayer .h1{ color:var(--h1); font-weight:bold; }
+  #highlightLayer .h2{ color:var(--h2); font-weight:bold; }
+  #highlightLayer .h3{ color:var(--h3); font-weight:bold; }
+  #highlightLayer .h4{ color:var(--h4); font-weight:bold; }
+
+  #editorTextarea{
+    position:absolute; top:0; left:0; right:0; width:100%;
+    z-index:2; background:transparent; color:transparent; caret-color:var(--fg);
+    resize:none; overflow:hidden; outline:none;
+  }
+
+  #caretMirror{ position:absolute; top:0; left:0; width:100%; visibility:hidden; z-index:-1; }
+
+  /* custom modal (replaces window.confirm / alert, which browsers can block inside sandboxed pages) */
+  #modalOverlay{
+    position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.4);
+    display:none; align-items:center; justify-content:center;
+  }
+  #modalOverlay.show{ display:flex; }
+  #modalBox{
+    background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:10px;
+    padding:16px; max-width:80vw; box-shadow:0 4px 20px rgba(0,0,0,0.3);
+  }
+  #modalMessage{ margin-bottom:14px; font-size:14px; white-space:pre-wrap; }
+  #modalButtons{ display:flex; justify-content:flex-end; gap:8px; }
+  #modalButtons button{
+    padding:6px 14px; font-size:13px; border-radius:6px;
+    border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--fg); cursor:pointer;
+  }
+
+  #toast{
+    position:fixed; left:50%; bottom:16px; transform:translateX(-50%);
+    background:var(--toolbar-bg); color:var(--fg); border:1px solid var(--border);
+    padding:8px 14px; border-radius:8px; font-size:13px; z-index:1000;
+    opacity:0; pointer-events:none; transition:opacity 0.2s;
+    max-width:85vw; text-align:center;
+  }
+  #toast.show{ opacity:1; }
