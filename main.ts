@@ -7,6 +7,7 @@ import packageInfo from './package.json';
   const outlineArea = document.getElementById('outlineArea');
   const editorWrapper = document.getElementById('editorWrapper');
   const currentLineLayer = document.getElementById('currentLineLayer');
+  const lineNumberLayer = document.getElementById('lineNumberLayer');
   const highlightLayer = document.getElementById('highlightLayer');
   const caretMirror = document.getElementById('caretMirror');
   const textarea = document.getElementById('editorTextarea');
@@ -198,6 +199,7 @@ import packageInfo from './package.json';
     window.visualViewport.addEventListener('resize', ()=>{
       pinToolbar();
       updateCaretUI();
+      renderLineNumbers();
     });
     window.visualViewport.addEventListener('scroll', ()=>{
       pinToolbar();
@@ -225,7 +227,7 @@ import packageInfo from './package.json';
     }
     let documentOffset = 0;
     const lines = documentText.split('\n');
-    const html = lines.map(line=>{
+    const html = lines.map((line, lineIndex)=>{
       const lineStart = documentOffset;
       documentOffset += line.length + 1;
       const match = activeSearchMatch;
@@ -236,8 +238,9 @@ import packageInfo from './package.json';
         content = esc(line.slice(0, from)) + '<span class="searchHit">' + esc(line.slice(from, to)) + '</span>' + esc(line.slice(to));
       }
       const h = headingLevel(line);
-      if(h) return '<span class="h' + h.level + '">' + content + '</span>';
-      return content === '' ? '\u200b' : content;
+      if(content === '') content = '\u200b';
+      if(h) content = '<span class="h' + h.level + '">' + content + '</span>';
+      return '<span class="editorLogicalLine" data-editor-line="' + lineIndex + '">' + content + '</span>';
     }).join('\n');
     highlightLayer.innerHTML = html;
   }
@@ -479,6 +482,25 @@ import packageInfo from './package.json';
     textarea.style.height = h + 'px';
     highlightLayer.style.height = h + 'px';
     caretMirror.style.height = h + 'px';
+    lineNumberLayer.style.height = h + 'px';
+    renderLineNumbers();
+  }
+
+  function renderLineNumbers(){
+    const lineElements = highlightLayer.querySelectorAll('.editorLogicalLine');
+    const layerRect = highlightLayer.getBoundingClientRect();
+    const lineHeight = parseFloat(getComputedStyle(highlightLayer).lineHeight) || 0;
+    const fragment = document.createDocumentFragment();
+    lineElements.forEach((line, index)=>{
+      const firstRow = line.getClientRects()[0];
+      if(!firstRow) return;
+      const number = document.createElement('div');
+      number.className = 'lineNumber';
+      number.textContent = String(index + 1).slice(-3).padStart(3, '0');
+      number.style.top = (firstRow.top + (firstRow.height - lineHeight) / 2 - layerRect.top) + 'px';
+      fragment.appendChild(number);
+    });
+    lineNumberLayer.replaceChildren(fragment);
   }
 
   function updateCaretUI(){
@@ -522,6 +544,7 @@ import packageInfo from './package.json';
     renderHighlight();
     renderOutline();
     updateCaretUI();
+    renderLineNumbers();
     if(editContext && !searchPanel.contains(document.activeElement)) syncDOMSelectionToEditContext();
   }
 
@@ -1043,7 +1066,7 @@ import packageInfo from './package.json';
   });
 
   // init
-  setDocumentText('# 見出しレベル１\nここに本文を入力してください。\n\n## 見出しレベル２\n本文はエディタ幅で自動的に折り返されます。');
+  setDocumentText('');
   initializeEditContext();
   fullUpdate();
 })();

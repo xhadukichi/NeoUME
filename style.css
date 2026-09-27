@@ -79,10 +79,19 @@
   .editorFont{
     font-family:monospace; font-size:var(--editor-font-size, 20px); line-height:1.6;
     white-space:pre-wrap; word-wrap:break-word; word-break:break-word;
-    padding:8px 10px; margin:0; border:none;
+    padding:8px 10px 8px 62px; margin:0; border:none;
   }
 
   #currentLineLayer{ position:absolute; top:0; left:0; right:0; z-index:0; pointer-events:none; }
+  #lineNumberLayer{
+    position:absolute; top:0; left:0; z-index:1; width:50px; box-sizing:border-box;
+    border-right:1px solid var(--border); color:var(--fg); opacity:0.55; pointer-events:none;
+    font-family:monospace; font-size:var(--editor-font-size, 20px); line-height:1.6;
+  }
+  .lineNumber{
+    position:absolute; left:5px; width:36px; text-align:right; white-space:nowrap;
+    font:inherit; line-height:inherit;
+  }
   #currentLineLayer .cur{
   position:absolute;
   left:0;
@@ -92,7 +101,7 @@
   opacity:1;
 }
 
-  #highlightLayer{ position:absolute; top:0; left:0; right:0; z-index:1; pointer-events:none; color:var(--fg); }
+  #highlightLayer{ position:absolute; top:0; left:0; right:0; z-index:2; pointer-events:none; color:var(--fg); }
   #highlightLayer .h1{ color:var(--h1); font-weight:bold; }
   #highlightLayer .h2{ color:var(--h2); font-weight:bold; }
   #highlightLayer .h3{ color:var(--h3); font-weight:bold; }
@@ -102,7 +111,7 @@
 
   #editorTextarea{
     position:absolute; top:0; left:0; right:0; width:100%;
-    z-index:2; background:transparent; color:transparent; caret-color:var(--fg);
+    z-index:3; background:transparent; color:transparent; caret-color:var(--fg);
     resize:none; overflow:hidden; outline:none;
   }
 
