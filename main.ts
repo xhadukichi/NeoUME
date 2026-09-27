@@ -799,6 +799,7 @@ import packageInfo from './package.json';
   aboutOverlay.addEventListener('click', (event)=>{
     if(event.target === aboutOverlay) aboutOverlay.classList.remove('show');
   });
+  document.getElementById('aboutTitle').textContent = packageInfo.name;
   document.getElementById('aboutVersion').textContent = packageInfo.version;
   document.addEventListener('keydown', (event: KeyboardEvent)=>{
     if(event.key === 'Escape') aboutOverlay.classList.remove('show');
