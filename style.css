@@ -13,8 +13,8 @@
     }
   }
   :root[data-theme="dark"]{
-    --bg:#1e1f22; --fg:#e6e6e6; --toolbar-bg:#2a2b2e; --border:#3d3e42;
-    --outline-bg:#131a2e; --editor-bg:#1e1f22; --btn-bg:#2f3033; --btn-border:#4a4b4f;
+    --bg:#141518; --fg:#e6e6e6; --toolbar-bg:#3d3f42; --border:#3d3e42;
+    --outline-bg:#131a2e; --editor-bg:#111113; --btn-bg:#2f3033; --btn-border:#4a4b4f;
     --h1:#f88a8a; --h2:#ffad66; --h3:#81c995; --h4:#d7aefb; --h5:#80aaff; --h6:#ff8fc7; --curline:#4a2222;
   }
   *{box-sizing:border-box;}
@@ -60,6 +60,7 @@
   }
   .outline-item{ white-space:pre; padding:2px 0; cursor:pointer; }
   .outline-item:hover{ text-decoration:underline; }
+  .outline-item-active{ outline:1px solid currentColor; outline-offset:-1px; text-decoration:underline; text-decoration-thickness:2px; }
   .oh1{ color:var(--h1); font-weight:bold; }
   .oh2{ color:var(--h2); font-weight:bold; }
   .oh3{ color:var(--h3); }
@@ -85,12 +86,12 @@
   #currentLineLayer{ position:absolute; top:0; left:0; right:0; z-index:0; pointer-events:none; }
   #lineNumberLayer{
     position:absolute; top:0; left:0; z-index:1; width:50px; box-sizing:border-box;
-    border-right:1px solid var(--border); color:var(--fg); opacity:0.55; pointer-events:none;
+    border-right:2px solid var(--border); color:var(--fg); opacity:0.75; pointer-events:none;
     font-family:monospace; font-size:var(--editor-font-size, 20px); line-height:1.6;
   }
   .lineNumber{
     position:absolute; left:5px; width:36px; text-align:right; white-space:nowrap;
-    font:inherit; line-height:inherit;
+    font:inherit; line-height:inherit;color:#099e09;
   }
   #currentLineLayer .cur{
   position:absolute;
@@ -102,6 +103,8 @@
 }
 
   #highlightLayer{ position:absolute; top:0; left:0; right:0; z-index:2; pointer-events:none; color:var(--fg); }
+  #newlineLayer{ position:absolute; top:0; left:0; right:0; z-index:2; pointer-events:none; }
+  .newlineMarker{ position:absolute; color:#888; opacity:0.65; white-space:pre; }
   #highlightLayer .h1{ color:var(--h1); font-weight:bold; }
   #highlightLayer .h2{ color:var(--h2); font-weight:bold; }
   #highlightLayer .h3{ color:var(--h3); font-weight:bold; }
@@ -114,6 +117,12 @@
     z-index:3; background:transparent; color:transparent; caret-color:var(--fg);
     resize:none; overflow:hidden; outline:none;
   }
+
+  #selectionCaret{
+    display:none; position:absolute; top:0; left:0; z-index:4; width:1.5px;
+    background:var(--fg); pointer-events:none; animation:selection-caret-blink 1s steps(2, start) infinite;
+  }
+  @keyframes selection-caret-blink{ to{ visibility:hidden; } }
 
   #caretMirror{ position:absolute; top:0; left:0; width:100%; visibility:hidden; z-index:-1; }
 
