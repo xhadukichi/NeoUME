@@ -1,6 +1,7 @@
 (function(){
   const toolbar = document.getElementById('toolbar');
   const spacer = document.getElementById('spacer');
+  const mainArea = document.getElementById('mainArea');
   const outlineArea = document.getElementById('outlineArea');
   const editorWrapper = document.getElementById('editorWrapper');
   const currentLineLayer = document.getElementById('currentLineLayer');
@@ -177,7 +178,10 @@
       pinToolbar();
       updateCaretUI();
     });
-    window.visualViewport.addEventListener('scroll', pinToolbar);
+    window.visualViewport.addEventListener('scroll', ()=>{
+      pinToolbar();
+      updateCaretUI();
+    });
   }
   window.addEventListener('scroll', pinToolbar);
   window.addEventListener('resize', pinToolbar);
@@ -458,21 +462,15 @@
 
   function updateCaretUI(){
     const viewport = window.visualViewport;
+    if(viewport){
+      // Size the full flex layout to the currently visible viewport. Shrinking
+      // only the editor leaves unused space below it when browser chrome moves.
+      document.body.style.height = Math.max(0, viewport.offsetTop + viewport.height) + 'px';
+    } else {
+      document.body.style.removeProperty('height');
+    }
     const viewportTop = viewport ? viewport.offsetTop : 0;
     const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
-    const mainRect = document.getElementById('mainArea').getBoundingClientRect();
-    const outlineRect = outlineArea.getBoundingClientRect();
-    const editorSlotHeight = Math.max(0, mainRect.height - outlineRect.height);
-    const visibleEditorTop = Math.max(outlineRect.bottom, viewportTop);
-    const visibleEditorBottom = Math.min(mainRect.bottom, viewportBottom);
-    const visibleEditorHeight = Math.max(0, visibleEditorBottom - visibleEditorTop);
-
-    if(viewport && visibleEditorHeight < editorSlotHeight - 1){
-      editorWrapper.style.flex = '0 0 ' + visibleEditorHeight + 'px';
-    } else {
-      editorWrapper.style.removeProperty('flex');
-    }
-
     syncHeights();
     const { top, height } = measureCaret();
 
