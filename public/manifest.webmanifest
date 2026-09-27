@@ -1,6 +1,6 @@
 {
-  "name": "UME Neo アウトラインエディタ",
-  "short_name": "UME Neo",
+  "name": "Neo UME アウトラインエディタ",
+  "short_name": "Neo UME",
   "description": "スマートフォンとPCで使えるアウトラインエディタ",
   "start_url": "./",
   "scope": "./",
