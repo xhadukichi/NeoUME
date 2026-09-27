@@ -1,7 +1,7 @@
   :root{
     --bg:#ffffff; --fg:#222222; --toolbar-bg:#f2f2f4; --border:#d7d7db;
-    --outline-bg:#fafafa; --editor-bg:#ffffff; --btn-bg:#ffffff; --btn-border:#c8c8cc;
-    --h1:#e24646; --h2:#137400; --h3:#fa7305; --h4:#9334e6; --curline:#ffe5e5;
+    --outline-bg:#e4f8f7; --editor-bg:#eeebeb; --btn-bg:#ffffff; --btn-border:#c8c8cc;
+    --h1:#e24646; --h2:#fa7305; --h3:#137400; --h4:#9334e6; --h5:#2563eb; --h6:#db2777; --curline:#ffe5e5;
     padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
     box-sizing:border-box;
   }
@@ -9,13 +9,13 @@
     :root:not([data-theme="light"]){
       --bg:#1e1f22; --fg:#e6e6e6; --toolbar-bg:#2a2b2e; --border:#3d3e42;
       --outline-bg:#232427; --editor-bg:#1e1f22; --btn-bg:#2f3033; --btn-border:#4a4b4f;
-      --h1:#f88a8a; --h2:#eec46b; --h3:#81c995; --h4:#d7aefb; --curline:#4a2222;
+      --h1:#f88a8a; --h2:#ffad66; --h3:#81c995; --h4:#d7aefb; --h5:#80aaff; --h6:#ff8fc7; --curline:#4a2222;
     }
   }
   :root[data-theme="dark"]{
     --bg:#1e1f22; --fg:#e6e6e6; --toolbar-bg:#2a2b2e; --border:#3d3e42;
-    --outline-bg:#232427; --editor-bg:#1e1f22; --btn-bg:#2f3033; --btn-border:#4a4b4f;
-    --h1:#f88a8a; --h2:#eec46b; --h3:#81c995; --h4:#d7aefb; --curline:#4a2222;
+    --outline-bg:#131a2e; --editor-bg:#1e1f22; --btn-bg:#2f3033; --btn-border:#4a4b4f;
+    --h1:#f88a8a; --h2:#ffad66; --h3:#81c995; --h4:#d7aefb; --h5:#80aaff; --h6:#ff8fc7; --curline:#4a2222;
   }
   *{box-sizing:border-box;}
   html,body{height:100%; margin:0; background:var(--bg); color:var(--fg); font-family:sans-serif;}
@@ -32,6 +32,22 @@
     border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--fg); cursor:pointer;
   }
   #toolbar button:active{ filter:brightness(0.9); }
+  .theme-toggle{
+    display:flex; align-items:center; gap:5px; padding:6px 8px; border:1px solid var(--btn-border);
+    border-radius:6px; background:var(--btn-bg); color:var(--fg); cursor:pointer; user-select:none;
+    font-size:13px; line-height:20px;
+  }
+  #themeToggle{
+    appearance:none; width:34px; height:20px; margin:0; position:relative; border-radius:999px;
+    background:#8b8b91; cursor:pointer; transition:background-color .15s ease;
+  }
+  #themeToggle::before{
+    content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+    background:#fff; transition:transform .15s ease;
+  }
+  #themeToggle:checked{ background:#5267b8; }
+  #themeToggle:checked::before{ transform:translateX(14px); }
+  #themeToggle:focus-visible{ outline:2px solid #5267b8; outline-offset:2px; }
   #fileNameDisplay{ margin-left:auto; font-size:13px; opacity:0.75; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:40vw; }
 
   #spacer{ flex:0 0 auto; }
@@ -48,6 +64,14 @@
   .oh2{ color:var(--h2); font-weight:bold; }
   .oh3{ color:var(--h3); }
   .oh4{ color:var(--h4); }
+  .oh5{ color:var(--h5); }
+  .oh6{ color:var(--h6); }
+  .outline-marker{ color:#000; font-weight:normal; }
+  .outline-marker::before{ content:"▼"; }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .outline-marker{ color:#fff; }
+  }
+  :root[data-theme="dark"] .outline-marker{ color:#fff; }
   #outlineEmpty{ opacity:0.5; font-size:12px; }
 
   #editorWrapper{ flex:1; min-height:0; position:relative; overflow:auto; background:var(--editor-bg); }
@@ -59,13 +83,22 @@
   }
 
   #currentLineLayer{ position:absolute; top:0; left:0; right:0; z-index:0; pointer-events:none; }
-  #currentLineLayer .cur{ position:absolute; left:0; right:0; border-bottom:2px solid #e53935; background:var(--curline); opacity:0.5; }
+  #currentLineLayer .cur{
+  position:absolute;
+  left:0;
+  right:0;
+  border-bottom:2px solid #ff0000;
+  background:rgba(0, 153, 255, 0.4);
+  opacity:1;
+}
 
   #highlightLayer{ position:absolute; top:0; left:0; right:0; z-index:1; pointer-events:none; color:var(--fg); }
   #highlightLayer .h1{ color:var(--h1); font-weight:bold; }
   #highlightLayer .h2{ color:var(--h2); font-weight:bold; }
   #highlightLayer .h3{ color:var(--h3); font-weight:bold; }
   #highlightLayer .h4{ color:var(--h4); font-weight:bold; }
+  #highlightLayer .h5{ color:var(--h5); font-weight:bold; }
+  #highlightLayer .h6{ color:var(--h6); font-weight:bold; }
 
   #editorTextarea{
     position:absolute; top:0; left:0; right:0; width:100%;

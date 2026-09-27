@@ -21,6 +21,27 @@
   const searchMessage = document.getElementById('searchMessage') as HTMLElement;
   let activeSearchMatch: {start: number; end: number; query: string} | null = null;
 
+  // --- display theme ---
+  const themeToggle = document.getElementById('themeToggle') as HTMLInputElement;
+  const savedTheme = localStorage.getItem('ume-theme');
+  const initialTheme = savedTheme === 'light' || savedTheme === 'dark'
+    ? savedTheme
+    : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  themeToggle.checked = initialTheme === 'dark';
+  if(savedTheme === 'light' || savedTheme === 'dark'){
+    document.documentElement.dataset.theme = savedTheme;
+  }
+  themeToggle.addEventListener('change', ()=>{
+    const theme = themeToggle.checked ? 'dark' : 'light';
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('ume-theme', theme);
+  });
+
+  if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
+    navigator.serviceWorker.register(new URL('./sw.js', document.baseURI))
+      .catch(error => console.warn('Service worker registration failed:', error));
+  }
+
   // --- custom modal helpers (window.confirm/alert can be silently blocked inside sandboxed pages) ---
   function showConfirm(message, onConfirm, onCancel = ()=>{}, labels: {ok?: string; cancel?: string} = {}){
     modalMessage.textContent = message;
@@ -168,7 +189,7 @@
 
   // --- heading parse ---
   function headingLevel(line){
-    const m = line.match(/^(#{1,4}) (.*)$/);
+    const m = line.match(/^(#{1,6}) (.*)$/);
     return m ? { level: m[1].length, text: m[2] } : null;
   }
 
@@ -383,7 +404,13 @@
     items.forEach(item=>{
       const div = document.createElement('div');
       div.className = 'outline-item oh' + item.level;
-      div.textContent = ' '.repeat(item.level - 1) + '▼' + item.text;
+      const indent = document.createElement('span');
+      indent.textContent = ' '.repeat(item.level - 1);
+      const marker = document.createElement('span');
+      marker.className = 'outline-marker';
+      const title = document.createElement('span');
+      title.textContent = item.text;
+      div.append(indent, marker, title);
       div.addEventListener('click', ()=>{
         jumpToLine(item.lineIndex);
       });
@@ -395,8 +422,19 @@
     const lines = documentText.split('\n');
     let offset = 0;
     for(let i=0;i<lineIndex;i++) offset += lines[i].length + 1;
-    textarea.focus();
+    const lineEnd = offset + (lines[lineIndex]?.length ?? 0);
+
+    // Put the caret at the end of the heading so Enter starts the next line.
+    focusEditorAtSelection(lineEnd, lineEnd);
+
+    // Position the heading's first visual row around the fourth visible row.
+    // Measure through the same caret mirror used by the editor layout.
+    syncHeights();
     textarea.setSelectionRange(offset, offset);
+    const headingTop = measureCaret().top;
+    textarea.setSelectionRange(lineEnd, lineEnd);
+    const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 24;
+    editorWrapper.scrollTop = Math.max(0, headingTop - lineHeight * 3);
     updateCaretUI();
   }
 

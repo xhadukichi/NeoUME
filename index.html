@@ -3,7 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="UME Neo">
 <title>アウトラインエディタ</title>
+<link rel="icon" href="./favicon.ico">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="manifest" href="./manifest.webmanifest">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -17,6 +23,11 @@
     <button id="btnPaste">ペースト</button>
     <button id="btnSearch" type="button" aria-label="検索">🔍</button>
     <button id="btnFontSize">文字サイズ: 20px</button>
+    <label class="theme-toggle" title="表示モード">
+      <span aria-hidden="true">☀️</span>
+      <input id="themeToggle" type="checkbox" role="switch" aria-label="ダークテーマ">
+      <span aria-hidden="true">🌙</span>
+    </label>
     <span id="fileNameDisplay">無題.txt</span>
   </div>
   <section id="searchPanel" role="search" aria-label="検索" hidden>
