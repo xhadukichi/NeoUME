@@ -40,6 +40,8 @@ import packageInfo from './package.json';
   const searchInput = getRequiredElement('searchInput') as HTMLInputElement;
   const replaceInput = getRequiredElement('replaceInput') as HTMLInputElement;
   const searchMessage = getRequiredElement('searchMessage');
+  const newlineToggle = getRequiredElement('btnNewlineToggle') as HTMLButtonElement;
+  let showNewlineMarkers = true;
   let activeSearchMatch: {start: number; end: number; query: string} | null = null;
   let outlineHeadingElements: HTMLElement[] = [];
   let activeOutlineHeading: HTMLElement | null = null;
@@ -261,7 +263,7 @@ import packageInfo from './package.json';
       return '<span class="editorLogicalLine" data-editor-line="' + lineIndex + '">' + content + '</span>';
     }).join('\n');
     highlightLayer.innerHTML = html;
-    renderNewlineMarkers();
+    if(showNewlineMarkers) renderNewlineMarkers();
   }
 
   function renderNewlineMarkers(){
@@ -1241,6 +1243,13 @@ import packageInfo from './package.json';
     searchInput.select();
   }
   getRequiredElement('btnSearch').addEventListener('click', openSearchPanel);
+  newlineToggle.addEventListener('click', ()=>{
+    showNewlineMarkers = !showNewlineMarkers;
+    newlineToggle.setAttribute('aria-pressed', String(showNewlineMarkers));
+    newlineToggle.title = '改行コード表示: ' + (showNewlineMarkers ? 'ON' : 'OFF');
+    if(showNewlineMarkers) renderNewlineMarkers();
+    else newlineLayer.replaceChildren();
+  });
   getRequiredElement('searchNext').addEventListener('click', ()=>searchFrom(1));
   getRequiredElement('searchPrevious').addEventListener('click', ()=>searchFrom(-1));
   getRequiredElement('replaceCurrent').addEventListener('click', ()=>{
