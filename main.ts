@@ -1,3 +1,5 @@
+import packageInfo from './package.json';
+
 (function(){
   const toolbar = document.getElementById('toolbar');
   const spacer = document.getElementById('spacer');
@@ -9,6 +11,7 @@
   const caretMirror = document.getElementById('caretMirror');
   const textarea = document.getElementById('editorTextarea');
   const fileNameDisplay = document.getElementById('fileNameDisplay');
+  const aboutOverlay = document.getElementById('aboutOverlay');
   const fileInput = document.getElementById('fileInput');
   const modalOverlay = document.getElementById('modalOverlay');
   const modalMessage = document.getElementById('modalMessage');
@@ -108,6 +111,7 @@
   }
 
   let fileName = '無題.txt';
+  let isDirty = false;
   let saveDirectoryHandle: any = null;
   let documentText = '';
   let documentSelectionStart = 0;
@@ -115,6 +119,21 @@
   let editContext = null;
   let isComposing = false;
   const undoStack: Array<{text: string; selectionStart: number; selectionEnd: number}> = [];
+
+  function updateFileNameDisplay(){
+    fileNameDisplay.textContent = fileName + (isDirty ? '*' : '');
+  }
+
+  function markDirty(){
+    if(isDirty) return;
+    isDirty = true;
+    updateFileNameDisplay();
+  }
+
+  function markSaved(){
+    isDirty = false;
+    updateFileNameDisplay();
+  }
 
   function recordUndoState(){
     undoStack.push({
@@ -128,6 +147,7 @@
     const previous = undoStack.pop();
     if(!previous) return;
 
+    markDirty();
     documentText = previous.text;
     textarea.value = documentText;
     documentSelectionStart = previous.selectionStart;
@@ -150,6 +170,7 @@
       editContext.updateText(0, editContext.text.length, documentText);
       editContext.updateSelection(documentSelectionStart, documentSelectionEnd);
     }
+    markSaved();
   }
 
   // --- toolbar height sync (keeps layout space reserved for the fixed toolbar) ---
@@ -506,7 +527,10 @@
 
   // --- events ---
   textarea.addEventListener('input', ()=>{
-    if(textarea.value !== documentText) recordUndoState();
+    if(textarea.value !== documentText){
+      recordUndoState();
+      markDirty();
+    }
     documentText = textarea.value;
     documentSelectionStart = textarea.selectionStart;
     documentSelectionEnd = textarea.selectionEnd;
@@ -593,6 +617,7 @@
       const end = Math.max(editContext.selectionStart, editContext.selectionEnd);
       const newPosition = start + 1;
       recordUndoState();
+      markDirty();
       documentText = documentText.slice(0, start) + '\n' + documentText.slice(end);
       editContext.updateText(start, end, '\n');
       editContext.updateSelection(newPosition, newPosition);
@@ -609,6 +634,7 @@
       const start = Math.min(event.updateRangeStart, event.updateRangeEnd);
       const end = Math.max(event.updateRangeStart, event.updateRangeEnd);
       recordUndoState();
+      markDirty();
       documentText = documentText.slice(0, start) + event.text + documentText.slice(end);
       documentSelectionStart = event.selectionStart;
       documentSelectionEnd = event.selectionEnd;
@@ -625,22 +651,28 @@
 
   // --- toolbar actions ---
   document.getElementById('btnNew').addEventListener('click', ()=>{
-    if(documentText.length > 0){
+    if(isDirty){
       showConfirm('編集中の内容は破棄されます。新規作成しますか？', ()=>{
         setDocumentText('');
         fileName = '無題.txt';
-        fileNameDisplay.textContent = fileName;
+        updateFileNameDisplay();
         fullUpdate();
       });
     } else {
       setDocumentText('');
       fileName = '無題.txt';
-      fileNameDisplay.textContent = fileName;
+      updateFileNameDisplay();
       fullUpdate();
     }
   });
 
-  document.getElementById('btnOpen').addEventListener('click', ()=> fileInput.click());
+  document.getElementById('btnOpen').addEventListener('click', ()=>{
+    if(isDirty){
+      showConfirm('編集中の内容は破棄されます。ファイルを開きますか？', ()=>fileInput.click());
+      return;
+    }
+    fileInput.click();
+  });
   fileInput.addEventListener('change', (e)=>{
     const file = e.target.files[0];
     if(!file) return;
@@ -648,7 +680,7 @@
     reader.onload = (ev)=>{
       setDocumentText(ev.target.result);
       fileName = file.name;
-      fileNameDisplay.textContent = fileName;
+      updateFileNameDisplay();
       fullUpdate();
     };
     reader.readAsText(file);
@@ -693,7 +725,7 @@
     await writable.write(documentText);
     await writable.close();
     fileName = name;
-    fileNameDisplay.textContent = fileName;
+    markSaved();
   }
 
   function promptForSaveAsName(initialName: string, message = '保存するファイル名を入力してください'){
@@ -718,7 +750,7 @@
     const nextFileName = incrementExistingDownloadSuffix(fileName || '無題.txt');
     a.download = nextFileName;
     fileName = nextFileName;
-    fileNameDisplay.textContent = fileName;
+    markSaved();
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -762,6 +794,15 @@
   }
 
   document.getElementById('btnSave').addEventListener('click', ()=>{ void saveDocument(); });
+  document.getElementById('btnAbout').addEventListener('click', ()=>aboutOverlay.classList.add('show'));
+  document.getElementById('aboutClose').addEventListener('click', ()=>aboutOverlay.classList.remove('show'));
+  aboutOverlay.addEventListener('click', (event)=>{
+    if(event.target === aboutOverlay) aboutOverlay.classList.remove('show');
+  });
+  document.getElementById('aboutVersion').textContent = packageInfo.version;
+  document.addEventListener('keydown', (event: KeyboardEvent)=>{
+    if(event.key === 'Escape') aboutOverlay.classList.remove('show');
+  });
 
   document.addEventListener('keydown', (event: KeyboardEvent)=>{
     const editorHasFocus = document.activeElement === textarea || document.activeElement === highlightLayer;
@@ -828,6 +869,7 @@
 
   function replaceEditorRange(start: number, end: number, replacement: string){
     recordUndoState();
+    markDirty();
     const nextText = documentText.slice(0, start) + replacement + documentText.slice(end);
     const nextPosition = start + replacement.length;
     documentText = nextText;

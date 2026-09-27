@@ -22,6 +22,7 @@
     <button id="btnCut">カット</button>
     <button id="btnPaste">ペースト</button>
     <button id="btnSearch" type="button" aria-label="検索">🔍</button>
+    <button id="btnAbout" type="button" aria-label="アプリ情報">？</button>
     <button id="btnFontSize">文字サイズ: 20px</button>
     <label class="theme-toggle" title="表示モード">
       <span aria-hidden="true">☀️</span>
@@ -72,6 +73,15 @@
     </div>
   </div>
   <div id="toast"></div>
+
+  <div id="aboutOverlay" class="aboutOverlay" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <div class="aboutBox">
+      <h2 id="aboutTitle">UME Neo</h2>
+      <p>アウトラインエディタ</p>
+      <p>バージョン <span id="aboutVersion"></span></p>
+      <button id="aboutClose" type="button">閉じる</button>
+    </div>
+  </div>
 
 <script type="module" src="/main.ts"></script>
 </body>
