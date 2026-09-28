@@ -45,8 +45,12 @@ import packageInfo from './package.json';
   const replaceInput = getRequiredElement('replaceInput') as HTMLInputElement;
   const searchMessage = getRequiredElement('searchMessage');
   const newlineToggle = getRequiredElement('btnNewlineToggle') as HTMLButtonElement;
+  const blockModeToggle = getRequiredElement('btnBlockMode') as HTMLButtonElement;
   let showNewlineMarkers = true;
   let activeSearchMatch: {start: number; end: number; query: string} | null = null;
+  let chapterModeLevel: 0 | 1 | 2 = 0;
+  let activeChapterStart: number | null = null;
+  let editorViewRange = {start:0, end:0, contentEnd:0};
   let outlineHeadingElements: HTMLElement[] = [];
   let activeOutlineHeading: HTMLElement | null = null;
 
@@ -310,13 +314,113 @@ import packageInfo from './package.json';
     return m ? { level: m[1].length, text: m[2] } : null;
   }
 
+  function getChapterRanges(level: 1 | 2 = 1){
+    const lines = documentText.split('\n');
+    const chapterHeadings: Array<{lineIndex: number; offset: number; title: string}> = [];
+    const sectionHeadings: Array<{lineIndex:number;offset:number;title:string;line:string}> = [];
+    let offset = 0;
+    lines.forEach((line, lineIndex)=>{
+      const heading = headingLevel(line);
+      if(heading?.level === 1) chapterHeadings.push({lineIndex, offset, title:heading.text});
+      if(heading?.level === 2) sectionHeadings.push({lineIndex, offset, title:heading.text, line});
+      offset += line.length + 1;
+    });
+
+    const ranges: Array<{
+      kind: 'top' | 'chapter' | 'section';
+      start: number;
+      end: number;
+      contentEnd: number;
+      lineIndex: number | null;
+      title: string;
+    }> = [];
+    const segments: Array<{kind:'top'|'chapter';start:number;end:number;lineIndex:number|null;title:string}> = [];
+    if(chapterHeadings.length === 0){
+      segments.push({kind:'top', start:0, end:documentText.length, lineIndex:null, title:'TOP'});
+    } else {
+      if(chapterHeadings[0].offset > 0){
+        segments.push({kind:'top', start:0, end:chapterHeadings[0].offset, lineIndex:null, title:'TOP'});
+      }
+      chapterHeadings.forEach((heading, index)=>{
+        segments.push({kind:'chapter', start:heading.offset, end:chapterHeadings[index + 1]?.offset ?? documentText.length, lineIndex:heading.lineIndex, title:heading.title});
+      });
+    }
+    if(level === 1) return segments.map(segment=>({
+      ...segment,
+      contentEnd:segment.end < documentText.length && segment.end > segment.start && documentText[segment.end - 1] === '\n' ? segment.end - 1 : segment.end
+    }));
+
+    segments.forEach(segment=>{
+      const childHeadings = sectionHeadings.filter(item=>item.offset >= segment.start && item.offset < segment.end);
+      if(segment.kind === 'top' && segment.start === segment.end) return;
+      const firstChild = childHeadings[0];
+      if(!firstChild){
+        ranges.push({...segment, contentEnd:segment.end < documentText.length && segment.end > segment.start && documentText[segment.end - 1] === '\n' ? segment.end - 1 : segment.end});
+        return;
+      }
+      if(firstChild.offset > segment.start){
+        const end = firstChild.offset;
+        ranges.push({...segment, end, contentEnd:documentText[end - 1] === '\n' ? end - 1 : end});
+      }
+      childHeadings.forEach((heading, index)=>{
+        const end = childHeadings[index + 1]?.offset ?? segment.end;
+        ranges.push({kind:'section', start:heading.offset, end, contentEnd:end < documentText.length && end > heading.offset && documentText[end - 1] === '\n' ? end - 1 : end, lineIndex:heading.lineIndex, title:heading.title});
+      });
+    });
+    return ranges;
+  }
+
+  function getChapterRangeAt(position: number, level: 1 | 2 = chapterModeLevel === 2 ? 2 : 1){
+    const ranges = getChapterRanges(level);
+    return ranges.find((range, index)=>
+      position >= range.start && (position < range.end || (index === ranges.length - 1 && position <= range.end))
+    ) ?? ranges[ranges.length - 1];
+  }
+
+  function getCurrentEditorViewRange(){
+    if(chapterModeLevel === 0) return {start:0, end:documentText.length, contentEnd:documentText.length};
+    const position = editContext ? editContext.selectionStart : documentSelectionStart;
+    const activeRange = activeChapterStart === null
+      ? null
+      : getChapterRanges(chapterModeLevel).find(range=>range.start === activeChapterStart);
+    if(activeRange && position >= activeRange.start &&
+       (position < activeRange.end || (position === activeRange.end && activeRange.end === documentText.length))) return activeRange;
+    const nextRange = getChapterRangeAt(position);
+    activeChapterStart = nextRange.start;
+    return nextRange;
+  }
+
+  function setTextareaSelectionFromDocument(start: number, end: number){
+    const localStart = Math.max(0, Math.min(start - editorViewRange.start, textarea.value.length));
+    const localEnd = Math.max(0, Math.min(end - editorViewRange.start, textarea.value.length));
+    textarea.setSelectionRange(localStart, localEnd);
+  }
+
+  function syncEditorViewRange(){
+    const range = getCurrentEditorViewRange();
+    const changed = range.start !== editorViewRange.start || range.end !== editorViewRange.end || range.contentEnd !== editorViewRange.contentEnd;
+    const chapterChanged = range.start !== editorViewRange.start;
+    editorViewRange = range;
+    const viewText = documentText.slice(range.start, range.contentEnd);
+    if(changed || textarea.value !== viewText){
+      textarea.value = viewText;
+      setTextareaSelectionFromDocument(documentSelectionStart, documentSelectionEnd);
+    }
+    if(chapterChanged) editorWrapper.scrollTop = 0;
+    return changed;
+  }
+
+  function getEditorViewText(){
+    return documentText.slice(editorViewRange.start, editorViewRange.contentEnd);
+  }
+
   // --- highlight layer (colored heading lines inside editor) ---
   function renderHighlight(){
     if(activeSearchMatch && documentText.slice(activeSearchMatch.start, activeSearchMatch.end) !== activeSearchMatch.query){
       activeSearchMatch = null;
     }
-    let documentOffset = 0;
-    const lines = documentText.split('\n');
+    let documentOffset = editorViewRange.start;
+    const lines = getEditorViewText().split('\n');
     const html = lines.map((line, lineIndex)=>{
       const lineStart = documentOffset;
       documentOffset += line.length + 1;
@@ -348,25 +452,34 @@ import packageInfo from './package.json';
       if(!lastText) return;
       const range = document.createRange();
       const length = lastText.textContent?.length ?? 0;
-      range.setStart(lastText, length);
-      range.collapse(true);
-      const rect = range.getBoundingClientRect();
+      if(length > 0){
+        range.setStart(lastText, length - 1);
+        range.setEnd(lastText, length);
+      } else {
+        range.selectNodeContents(line);
+        range.collapse(false);
+      }
+      let rect = range.getBoundingClientRect();
+      if(!rect.height){
+        const lineRects = line.getClientRects();
+        rect = lineRects.item(lineRects.length - 1) ?? line.getBoundingClientRect();
+      }
       const marker = document.createElement('span');
       marker.className = 'newlineMarker';
-      marker.textContent = '↵';
-      marker.style.left = (rect.left - layerRect.left) + 'px';
+      marker.textContent = '↲';
+      marker.style.left = (rect.right - layerRect.left + 2) + 'px';
       marker.style.top = (rect.top - layerRect.top) + 'px';
       newlineLayer.appendChild(marker);
     });
   }
 
   function renderedOffsetForDocumentOffset(offset: number){
-    const lines = documentText.split('\n');
-    let documentPosition = 0;
+    const lines = getEditorViewText().split('\n');
+    let documentPosition = editorViewRange.start;
     let renderedPosition = 0;
     for(let i = 0; i < lines.length; i++){
       const lineLength = lines[i].length;
-      if(offset <= documentPosition + lineLength) return renderedPosition + offset - documentPosition;
+      if(offset <= documentPosition + lineLength) return renderedPosition + Math.max(0, Math.min(offset - documentPosition, lineLength));
       documentPosition += lineLength;
       renderedPosition += Math.max(lineLength, 1);
       if(i < lines.length - 1){ documentPosition++; renderedPosition++; }
@@ -429,7 +542,14 @@ import packageInfo from './package.json';
     }
     searchMessage.textContent = '';
     activeSearchMatch = {start:found, end:found + query.length, query};
+    documentSelectionStart = found;
+    documentSelectionEnd = found;
+    if(editContext) editContext.updateSelection(found, found);
+    syncEditorViewRange();
+    setTextareaSelectionFromDocument(found, found);
     renderHighlight();
+    if(editContext && document.activeElement === highlightLayer) syncDOMSelectionToEditContext();
+    updateCaretUI();
     scrollToSearchMatch(activeSearchMatch.start, activeSearchMatch.end);
   }
 
@@ -456,32 +576,34 @@ import packageInfo from './package.json';
   }
 
   function getDocumentOffsetFromRenderedOffset(renderedOffset: number){
-    const lines = documentText.split('\n');
+    const viewText = getEditorViewText();
+    const lines = viewText.split('\n');
     let renderedPosition = 0;
     let documentPosition = 0;
     for(let i = 0; i < lines.length; i++){
       const lineLength = lines[i].length;
       const renderedLineLength = Math.max(lineLength, 1);
       if(renderedOffset <= renderedPosition + renderedLineLength){
-        return documentPosition + Math.min(renderedOffset - renderedPosition, lineLength);
+        return editorViewRange.start + documentPosition + Math.min(renderedOffset - renderedPosition, lineLength);
       }
       renderedPosition += renderedLineLength;
       documentPosition += lineLength;
       if(i < lines.length - 1){
-        if(renderedOffset === renderedPosition) return documentPosition;
-        if(renderedOffset <= renderedPosition + 1) return documentPosition + 1;
+        if(renderedOffset === renderedPosition) return editorViewRange.start + documentPosition;
+        if(renderedOffset <= renderedPosition + 1) return editorViewRange.start + documentPosition + 1;
         renderedPosition++;
         documentPosition++;
       }
     }
-    return documentText.length;
+    return editorViewRange.start + viewText.length;
   }
 
   function syncDOMSelectionToEditContext(){
     if(!editContext) return;
-    const lines = documentText.split('\n');
+    const viewText = getEditorViewText();
+    const lines = viewText.split('\n');
     function toRenderedOffset(sourceOffset: number){
-      const offset = Math.max(0, Math.min(sourceOffset, documentText.length));
+      const offset = Math.max(0, Math.min(sourceOffset - editorViewRange.start, viewText.length));
       let documentPosition = 0;
       let renderedPosition = 0;
       for(let i = 0; i < lines.length; i++){
@@ -544,7 +666,25 @@ import packageInfo from './package.json';
     outlineArea.innerHTML = '';
     outlineHeadingElements = [];
     activeOutlineHeading = null;
-    if(items.length === 0){
+    const topRange = getChapterRanges().find(range=>range.kind === 'top');
+    if(topRange){
+      const topItem = document.createElement('div');
+      topItem.className = 'outline-item outline-top';
+      topItem.dataset.documentOffset = '0';
+      const marker = document.createElement('span');
+      marker.className = 'outline-marker outline-top-marker';
+      const title = document.createElement('span');
+      title.textContent = 'TOP';
+      topItem.append(marker, title);
+      topItem.addEventListener('click', ()=>{
+        focusEditorAtSelection(0, 0);
+        editorWrapper.scrollTop = 0;
+        updateCaretUI();
+      });
+      outlineArea.appendChild(topItem);
+      outlineHeadingElements.push(topItem);
+    }
+    if(items.length === 0 && !topRange){
       const empty = document.createElement('div');
       empty.id = 'outlineEmpty';
       empty.textContent = '見出し（# ）がここに表示されます';
@@ -603,9 +743,9 @@ import packageInfo from './package.json';
     // Position the heading's first visual row around the fourth visible row.
     // Measure through the same caret mirror used by the editor layout.
     syncHeights();
-    textarea.setSelectionRange(offset, offset);
+    setTextareaSelectionFromDocument(offset, offset);
     const headingTop = measureCaret(offset).top;
-    textarea.setSelectionRange(lineEnd, lineEnd);
+    setTextareaSelectionFromDocument(lineEnd, lineEnd);
     const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 24;
     editorWrapper.scrollTop = Math.max(0, headingTop - lineHeight * 3);
     updateCaretUI();
@@ -613,31 +753,32 @@ import packageInfo from './package.json';
 
   // --- caret position / current-line underline / auto-scroll ---
   function measureCaret(position?: number){
-    let pos = position ?? textarea.selectionStart;
+    let documentPosition = position ?? (editContext ? editContext.selectionStart : editorViewRange.start + textarea.selectionStart);
     const editorFocused = document.activeElement === textarea || document.activeElement === highlightLayer;
-    let hasSelection = position === undefined && editorFocused && textarea.selectionStart !== textarea.selectionEnd;
+    let hasSelection = position === undefined && editorFocused && getEditorSelection().start !== getEditorSelection().end;
     if(position === undefined && editContext && document.activeElement === highlightLayer){
       const selection = document.getSelection();
       if(selection?.focusNode && highlightLayer.contains(selection.focusNode)){
         const range = document.createRange();
         range.selectNodeContents(highlightLayer);
         range.setEnd(selection.focusNode, selection.focusOffset);
-        pos = getDocumentOffsetFromRenderedOffset(range.toString().length);
+        documentPosition = getDocumentOffsetFromRenderedOffset(range.toString().length);
         hasSelection = !selection.isCollapsed;
       } else {
-        pos = editContext.selectionEnd;
+        documentPosition = editContext.selectionEnd;
         hasSelection = editContext.selectionStart !== editContext.selectionEnd;
       }
     } else if(position === undefined && hasSelection && textarea.selectionDirection === 'backward'){
-      pos = textarea.selectionStart;
+      documentPosition = editorViewRange.start + textarea.selectionStart;
     } else if(position === undefined && hasSelection){
-      pos = textarea.selectionEnd;
+      documentPosition = editorViewRange.start + textarea.selectionEnd;
     }
-    const before = textarea.value.substring(0, pos);
-    const after = textarea.value.substring(pos);
+    const localPosition = Math.max(0, Math.min(documentPosition - editorViewRange.start, textarea.value.length));
+    const before = textarea.value.substring(0, localPosition);
+    const after = textarea.value.substring(localPosition);
     caretMirror.innerHTML = esc(before) + '<span id="caretMarker"> </span>' + esc(after);
     const marker = getRequiredElement('caretMarker');
-    return { top: marker.offsetTop, left: marker.offsetLeft, height: marker.offsetHeight || 24, hasSelection, documentOffset: pos };
+    return { top: marker.offsetTop, left: marker.offsetLeft, height: marker.offsetHeight || 24, hasSelection, documentOffset: documentPosition };
   }
 
   function measureVisualRowTop(position: number){
@@ -682,12 +823,13 @@ import packageInfo from './package.json';
     const layerRect = highlightLayer.getBoundingClientRect();
     const lineHeight = parseFloat(getComputedStyle(highlightLayer).lineHeight) || 0;
     const fragment = document.createDocumentFragment();
+    const baseLineNumber = findLineIndex(editorViewRange.start);
     lineElements.forEach((line, index)=>{
       const firstRow = line.getClientRects()[0];
       if(!firstRow) return;
       const number = document.createElement('div');
       number.className = 'lineNumber';
-      number.textContent = String(index + 1).slice(-3).padStart(3, '0');
+      number.textContent = String(baseLineNumber + index + 1).slice(-3).padStart(3, '0');
       number.style.top = (firstRow.top + (firstRow.height - lineHeight) / 2 - layerRect.top) + 'px';
       fragment.appendChild(number);
     });
@@ -744,6 +886,7 @@ import packageInfo from './package.json';
   }
 
   function fullUpdate(){
+    syncEditorViewRange();
     renderHighlight();
     renderOutline();
     // Reapply the DOM selection only while the EditContext host owns focus.
@@ -754,25 +897,33 @@ import packageInfo from './package.json';
     renderLineNumbers();
   }
 
+  function updateLegacySelection(){
+    documentSelectionStart = editorViewRange.start + textarea.selectionStart;
+    documentSelectionEnd = editorViewRange.start + textarea.selectionEnd;
+    if(chapterModeLevel !== 0 && getCurrentEditorViewRange().start !== editorViewRange.start) fullUpdate();
+    else updateCaretUI();
+  }
+
   // --- events ---
   textarea.addEventListener('input', ()=>{
-    if(textarea.value !== documentText){
+    const nextText = documentText.slice(0, editorViewRange.start) + textarea.value + documentText.slice(editorViewRange.contentEnd);
+    if(nextText !== documentText){
       recordUndoState();
       markDirty();
     }
-    documentText = textarea.value;
-    documentSelectionStart = textarea.selectionStart;
-    documentSelectionEnd = textarea.selectionEnd;
+    documentText = nextText;
+    documentSelectionStart = editorViewRange.start + textarea.selectionStart;
+    documentSelectionEnd = editorViewRange.start + textarea.selectionEnd;
     fullUpdate();
   });
-  textarea.addEventListener('click', updateCaretUI);
-  textarea.addEventListener('keyup', updateCaretUI);
+  textarea.addEventListener('click', updateLegacySelection);
+  textarea.addEventListener('keyup', updateLegacySelection);
   textarea.addEventListener('scroll', ()=>{ /* wrapper handles scroll via CSS since textarea overflow hidden */ });
   editorWrapper.addEventListener('scroll', ()=>{
     // keep layers aligned is automatic since they're absolutely positioned within the same scrolling wrapper
   });
   document.addEventListener('selectionchange', ()=>{
-    if(document.activeElement === textarea) updateCaretUI();
+    if(document.activeElement === textarea) updateLegacySelection();
   });
   window.addEventListener('resize', fullUpdate);
 
@@ -824,8 +975,10 @@ import packageInfo from './package.json';
         documentSelectionStart = start;
         documentSelectionEnd = end;
         context.updateSelection(start, end);
-        textarea.setSelectionRange(start, end);
-        updateCaretUI();
+        setTextareaSelectionFromDocument(start, end);
+        const previousRangeStart = editorViewRange.start;
+        if(chapterModeLevel !== 0 && getCurrentEditorViewRange().start !== previousRangeStart) fullUpdate();
+        else updateCaretUI();
       }
     });
 
@@ -835,11 +988,33 @@ import packageInfo from './package.json';
       documentSelectionStart = offset;
       documentSelectionEnd = offset;
       context.updateSelection(offset, offset);
-      textarea.setSelectionRange(offset, offset);
+      setTextareaSelectionFromDocument(offset, offset);
       updateCaretUI();
     });
 
     editHost.addEventListener('keydown', (event: KeyboardEvent)=>{
+      if(chapterModeLevel !== 0){
+        const selectionStart = Math.min(context.selectionStart, context.selectionEnd);
+        const selectionEnd = Math.max(context.selectionStart, context.selectionEnd);
+        if((event.ctrlKey || event.metaKey) && (event.key === 'Home' || event.key === 'End')){
+          event.preventDefault();
+          const destination = event.key === 'Home' ? editorViewRange.start : editorViewRange.contentEnd;
+          documentSelectionStart = destination;
+          documentSelectionEnd = destination;
+          context.updateSelection(destination, destination);
+          setTextareaSelectionFromDocument(destination, destination);
+          syncDOMSelectionToEditContext();
+          updateCaretUI();
+          return;
+        }
+        if((event.key === 'ArrowLeft' && selectionStart <= editorViewRange.start) ||
+           (event.key === 'ArrowRight' && selectionEnd >= editorViewRange.contentEnd) ||
+           (event.key === 'Backspace' && selectionStart === selectionEnd && selectionStart <= editorViewRange.start) ||
+           (event.key === 'Delete' && selectionStart === selectionEnd && selectionEnd >= editorViewRange.contentEnd)){
+          event.preventDefault();
+          return;
+        }
+      }
       if(event.key === 'ArrowLeft' && event.shiftKey && !event.isComposing && !isComposing){
         const selection = document.getSelection();
         if(!selection) return;
@@ -868,7 +1043,7 @@ import packageInfo from './package.json';
           documentSelectionStart = start;
           documentSelectionEnd = end;
           context.updateSelection(start, end);
-          textarea.setSelectionRange(start, end);
+          setTextareaSelectionFromDocument(start, end);
           updateCaretUI();
           return;
         }
@@ -897,7 +1072,7 @@ import packageInfo from './package.json';
           documentSelectionStart = Math.min(start, end);
           documentSelectionEnd = Math.max(start, end);
           context.updateSelection(documentSelectionStart, documentSelectionEnd);
-          textarea.setSelectionRange(documentSelectionStart, documentSelectionEnd);
+          setTextareaSelectionFromDocument(documentSelectionStart, documentSelectionEnd);
           updateCaretUI();
           return;
         }
@@ -927,7 +1102,7 @@ import packageInfo from './package.json';
             documentSelectionStart = start;
             documentSelectionEnd = end;
             context.updateSelection(start, end);
-            textarea.setSelectionRange(start, end);
+            setTextareaSelectionFromDocument(start, end);
             updateCaretUI();
             return;
           }
@@ -944,7 +1119,7 @@ import packageInfo from './package.json';
         documentSelectionStart = start;
         documentSelectionEnd = nextPosition;
         context.updateSelection(start, nextPosition);
-        textarea.setSelectionRange(start, nextPosition);
+        setTextareaSelectionFromDocument(start, nextPosition);
         syncDOMSelectionToEditContext();
         updateCaretUI();
         return;
@@ -978,8 +1153,8 @@ import packageInfo from './package.json';
       documentSelectionEnd = newPosition;
 
       // Keep the legacy textarea's mirror in sync without changing its input path.
-      textarea.value = documentText;
-      textarea.setSelectionRange(newPosition, newPosition);
+      textarea.value = getEditorViewText();
+      setTextareaSelectionFromDocument(newPosition, newPosition);
       fullUpdate();
     });
 
@@ -995,8 +1170,8 @@ import packageInfo from './package.json';
 
       // Keep the legacy textarea's text and collapsed caret mirror in step while
       // the EditContext remains the source of this input update.
-      textarea.value = documentText;
-      textarea.setSelectionRange(documentSelectionStart, documentSelectionEnd);
+      textarea.value = getEditorViewText();
+      setTextareaSelectionFromDocument(documentSelectionStart, documentSelectionEnd);
       fullUpdate();
     });
     context.addEventListener('compositionstart', ()=>{ isComposing = true; });
@@ -1193,17 +1368,18 @@ import packageInfo from './package.json';
 
     if(event.key.toLowerCase() === 'a'){
       event.preventDefault();
-      focusEditorAtSelection(0, documentText.length);
+      focusEditorAtSelection(chapterModeLevel !== 0 ? editorViewRange.start : 0,
+        chapterModeLevel !== 0 ? editorViewRange.contentEnd : documentText.length);
     }
   });
   function getEditorSelection(){
-    const rawStart = editContext ? editContext.selectionStart : textarea.selectionStart;
-    const rawEnd = editContext ? editContext.selectionEnd : textarea.selectionEnd;
+    const rawStart = editContext ? editContext.selectionStart : editorViewRange.start + textarea.selectionStart;
+    const rawEnd = editContext ? editContext.selectionEnd : editorViewRange.start + textarea.selectionEnd;
     const start = Math.min(rawStart, rawEnd);
     let end = Math.max(rawStart, rawEnd);
     const renderedSelectionText = editContext && document.activeElement === highlightLayer
       ? document.getSelection()?.toString() ?? ''
-      : textarea.value.slice(start, end);
+      : textarea.value.slice(start - editorViewRange.start, end - editorViewRange.start);
     if(documentText.slice(start, end).includes('\n') && !renderedSelectionText.includes('\n')){
       end = Math.min(end, start + renderedSelectionText.replace(/\u200b/g, '').length);
     }
@@ -1211,12 +1387,17 @@ import packageInfo from './package.json';
   }
 
   function focusEditorAtSelection(start: number, end: number){
-    textarea.setSelectionRange(start, end);
+    documentSelectionStart = start;
+    documentSelectionEnd = end;
+    if(editContext){
+      editContext.updateSelection(start, end);
+    }
+    syncEditorViewRange();
+    renderHighlight();
+    renderLineNumbers();
+    setTextareaSelectionFromDocument(start, end);
     if(editContext){
       (highlightLayer as HTMLElement).focus({preventScroll:true});
-      editContext.updateSelection(start, end);
-      documentSelectionStart = start;
-      documentSelectionEnd = end;
       syncDOMSelectionToEditContext();
     } else {
       textarea.focus({preventScroll:true});
@@ -1235,8 +1416,6 @@ import packageInfo from './package.json';
       editContext.updateText(start, end, replacement);
       editContext.updateSelection(nextPosition, nextPosition);
     }
-    textarea.value = nextText;
-    textarea.setSelectionRange(nextPosition, nextPosition);
     fullUpdate();
     focusEditorAtSelection(nextPosition, nextPosition);
     updateCaretUI();
@@ -1352,6 +1531,16 @@ import packageInfo from './package.json';
     newlineToggle.title = '改行コード表示: ' + (showNewlineMarkers ? 'ON' : 'OFF');
     if(showNewlineMarkers) renderNewlineMarkers();
     else newlineLayer.replaceChildren();
+  });
+  blockModeToggle.addEventListener('click', ()=>{
+    chapterModeLevel = (chapterModeLevel === 2 ? 0 : chapterModeLevel + 1) as 0 | 1 | 2;
+    if(chapterModeLevel !== 0) activeChapterStart = getChapterRangeAt(getEditorSelection().start, chapterModeLevel).start;
+    else activeChapterStart = null;
+    blockModeToggle.textContent = '📖' + chapterModeLevel;
+    blockModeToggle.setAttribute('aria-label', 'ブロック表示モード レベル' + chapterModeLevel);
+    blockModeToggle.setAttribute('aria-pressed', String(chapterModeLevel !== 0));
+    blockModeToggle.title = 'ブロック表示モード: ' + chapterModeLevel;
+    fullUpdate();
   });
   getRequiredElement('searchNext').addEventListener('click', ()=>searchFrom(1));
   getRequiredElement('searchPrevious').addEventListener('click', ()=>searchFrom(-1));
