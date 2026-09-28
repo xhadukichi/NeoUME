@@ -20,6 +20,10 @@ import packageInfo from './package.json';
   const mainArea = getRequiredElement('mainArea');
   const outlineArea = getRequiredElement('outlineArea');
   const editorWrapper = getRequiredElement('editorWrapper');
+  const statusLineCount = getRequiredElement('statusLineCount');
+  const statusCharacterCount = getRequiredElement('statusCharacterCount');
+  const statusCursor = getRequiredElement('statusCursor');
+  const statusFileSize = getRequiredElement('statusFileSize');
   const currentLineLayer = getRequiredElement('currentLineLayer');
   const lineNumberLayer = getRequiredElement('lineNumberLayer');
   const highlightLayer = getRequiredElement('highlightLayer');
@@ -120,8 +124,14 @@ import packageInfo from './package.json';
     modalOk.addEventListener('click', okHandler);
     modalCancel.addEventListener('click', cancelHandler);
     input.addEventListener('keydown', keyHandler);
-    input.focus();
-    input.select();
+    // The prompt can be opened after an awaited file picker / confirmation.
+    // Focus it after the modal has been painted so mobile browsers attach the
+    // virtual keyboard to the visible input reliably.
+    requestAnimationFrame(()=>{
+      if(!modalOverlay.classList.contains('show') || !input.isConnected) return;
+      input.focus();
+      input.select();
+    });
   }
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   function showToast(message: string){
@@ -137,6 +147,10 @@ import packageInfo from './package.json';
   let documentText = '';
   let documentSelectionStart = 0;
   let documentSelectionEnd = 0;
+  let statsTextSnapshot: string | null = null;
+  let documentLineStarts: number[] = [0];
+  let documentCharacterCount = 0;
+  let documentByteCount = 0;
   let editContext: EditContextLike | null = null;
   let isComposing = false;
   const undoStack: Array<{text: string; selectionStart: number; selectionEnd: number}> = [];
@@ -154,6 +168,62 @@ import packageInfo from './package.json';
   function markSaved(){
     isDirty = false;
     updateFileNameDisplay();
+  }
+
+  function refreshStatus(){
+    if(statsTextSnapshot !== documentText){
+      statsTextSnapshot = documentText;
+      documentLineStarts = [0];
+      for(let i = 0; i < documentText.length; i++){
+        if(documentText.charCodeAt(i) === 10) documentLineStarts.push(i + 1);
+      }
+      documentCharacterCount = Array.from(documentText).length;
+      documentByteCount = new TextEncoder().encode(documentText).length;
+    }
+
+    const selection = getEditorSelection();
+    const hasSelection = selection.start !== selection.end;
+    const position = selection.start;
+    let low = 0;
+    let high = documentLineStarts.length;
+    while(low < high){
+      const middle = (low + high) >>> 1;
+      if(documentLineStarts[middle] <= position) low = middle + 1;
+      else high = middle;
+    }
+    const lineIndex = Math.max(0, low - 1);
+    const column = Array.from(documentText.slice(documentLineStarts[lineIndex], position)).length;
+
+    if(hasSelection){
+      let selectionEndLine = findLineIndex(selection.end);
+      if(selection.end > selection.start && documentText[selection.end - 1] === '\n') selectionEndLine--;
+      const selectionLineCount = Math.max(1, selectionEndLine - findLineIndex(selection.start) + 1);
+      const selectionCharacterCount = Array.from(documentText.slice(selection.start, selection.end).replace(/\n/g, '')).length;
+      statusLineCount.textContent = '選択行数 ' + selectionLineCount;
+      statusCharacterCount.textContent = '選択文字数 ' + selectionCharacterCount;
+    } else {
+      statusLineCount.textContent = '総行数 ' + documentLineStarts.length;
+      statusCharacterCount.textContent = '総文字数 ' + documentCharacterCount;
+    }
+    statusCursor.textContent = 'カーソル ' + (lineIndex + 1) + ':' + column;
+    statusFileSize.textContent = 'サイズ ' + formatFileSize(documentByteCount);
+  }
+
+  function findLineIndex(position: number){
+    let low = 0;
+    let high = documentLineStarts.length;
+    while(low < high){
+      const middle = (low + high) >>> 1;
+      if(documentLineStarts[middle] <= position) low = middle + 1;
+      else high = middle;
+    }
+    return Math.max(0, low - 1);
+  }
+
+  function formatFileSize(bytes: number){
+    if(bytes < 1024) return bytes + ' B';
+    if(bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
   function recordUndoState(){
@@ -304,13 +374,15 @@ import packageInfo from './package.json';
     return renderedPosition;
   }
 
-  function findRenderedDOMPosition(renderedOffset: number){
+  function findRenderedDOMPosition(renderedOffset: number, preferNext = false){
     const walker = document.createTreeWalker(highlightLayer, NodeFilter.SHOW_TEXT);
     let node: Node | null;
     let traversed = 0;
     while((node = walker.nextNode())){
       const length = node.textContent?.length ?? 0;
-      if(renderedOffset <= traversed + length) return {node, offset: renderedOffset - traversed};
+      if(preferNext ? renderedOffset < traversed + length : renderedOffset <= traversed + length){
+        return {node, offset: renderedOffset - traversed};
+      }
       traversed += length;
     }
     return null;
@@ -568,6 +640,32 @@ import packageInfo from './package.json';
     return { top: marker.offsetTop, left: marker.offsetLeft, height: marker.offsetHeight || 24, hasSelection, documentOffset: pos };
   }
 
+  function measureVisualRowTop(position: number){
+    const renderedOffset = renderedOffsetForDocumentOffset(position);
+    const domPosition = findRenderedDOMPosition(renderedOffset, true);
+    if(!domPosition) return null;
+
+    // Measure a real glyph in #highlightLayer instead of inferring the row
+    // from a mirror character. At the start of a soft-wrapped row, the glyph
+    // at the caret offset belongs to the new row even when its X coordinate is 0.
+    const nodeText = domPosition.node.textContent ?? '';
+    let start = domPosition.offset;
+    let end = start + 1;
+    if(nodeText[start] === '\n'){
+      if(start === 0) return null;
+      start--;
+      end--;
+    }
+    if(start < 0 || end > nodeText.length) return null;
+
+    const range = document.createRange();
+    range.setStart(domPosition.node, start);
+    range.setEnd(domPosition.node, end);
+    const rect = range.getBoundingClientRect();
+    if(!rect.height) return null;
+    return rect.top - highlightLayer.getBoundingClientRect().top;
+  }
+
   function syncHeights(){
     textarea.style.height = 'auto';
     const h = Math.max(textarea.scrollHeight, editorWrapper.clientHeight);
@@ -609,6 +707,8 @@ import packageInfo from './package.json';
     const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
     syncHeights();
     const { top, left, height, hasSelection, documentOffset } = measureCaret();
+    const visualRowTop = measureVisualRowTop(documentOffset) ?? top;
+    refreshStatus();
     updateActiveOutlineHeading(documentOffset);
     selectionCaret.style.display = hasSelection ? 'block' : 'none';
     selectionCaret.style.top = top + 'px';
@@ -624,7 +724,7 @@ import packageInfo from './package.json';
     currentLineLayer.innerHTML = '';
     const cur = document.createElement('div');
     cur.className = 'cur';
-    cur.style.top = top + 'px';
+    cur.style.top = visualRowTop + 'px';
     cur.style.height = height + 'px';
     currentLineLayer.appendChild(cur);
 

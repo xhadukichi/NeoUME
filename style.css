@@ -77,6 +77,15 @@
 
   #editorWrapper{ flex:1; min-height:0; position:relative; overflow:auto; background:var(--editor-bg); }
 
+  #statusBar{
+    flex:0 0 auto; display:flex; align-items:center; gap:12px; min-height:26px;
+    padding:3px 8px; overflow-x:auto; white-space:nowrap; scrollbar-width:none;
+    border-top:1px solid var(--border); background:var(--toolbar-bg); color:var(--fg);
+    font-size:12px; line-height:18px; font-variant-numeric:tabular-nums;
+  }
+  #statusBar::-webkit-scrollbar{ display:none; }
+  #statusBar span{ flex:0 0 auto; }
+
   .editorFont{
     font-family:monospace; font-size:var(--editor-font-size, 20px); line-height:1.6;
     white-space:pre-wrap; word-wrap:break-word; word-break:break-word;

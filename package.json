@@ -1,7 +1,7 @@
 {
   "name": "Neo UMEditor",
   "private": true,
-  "version": "0.8.5 (0927β)",
+  "version": "0.8.6 (0928β)",
   "type": "module",
   "scripts": {
     "dev": "vite",
