@@ -746,7 +746,10 @@ import packageInfo from './package.json';
   function fullUpdate(){
     renderHighlight();
     renderOutline();
-    if(editContext && !searchPanel.contains(document.activeElement)) syncDOMSelectionToEditContext();
+    // Reapply the DOM selection only while the EditContext host owns focus.
+    // Updating it while a dialog or another input is active can steal focus
+    // back from that control (notably the Save As filename field).
+    if(editContext && document.activeElement === highlightLayer) syncDOMSelectionToEditContext();
     updateCaretUI();
     renderLineNumbers();
   }
