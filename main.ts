@@ -39,6 +39,7 @@ import packageInfo from './package.json';
   const modalBox = getRequiredElement('modalBox');
   const modalOk = getRequiredElement('modalOk') as HTMLButtonElement;
   const modalCancel = getRequiredElement('modalCancel') as HTMLButtonElement;
+  const modalAlt = getRequiredElement('modalAlt') as HTMLButtonElement;
   const toast = getRequiredElement('toast');
   const searchPanel = getRequiredElement('searchPanel');
   const searchInput = getRequiredElement('searchInput') as HTMLInputElement;
@@ -77,6 +78,7 @@ import packageInfo from './package.json';
 
   // --- custom modal helpers (window.confirm/alert can be silently blocked inside sandboxed pages) ---
   function showConfirm(message: string, onConfirm: ()=>void, onCancel: ()=>void = ()=>{}, labels: {ok?: string; cancel?: string} = {}){
+    modalAlt.hidden = true;
     modalMessage.textContent = message;
     const previousOkText = modalOk.textContent;
     const previousCancelText = modalCancel.textContent;
@@ -96,7 +98,33 @@ import packageInfo from './package.json';
     modalCancel.addEventListener('click', cancelHandler);
   }
 
+  function showThreeChoice(message: string, choices: [string, ()=>void, string, ()=>void, string, ()=>void]){
+    modalMessage.textContent = message;
+    const buttons = [modalOk, modalAlt, modalCancel];
+    const previousLabels = buttons.map(button=>button.textContent);
+    const handlers = choices.filter((_, index)=>index % 2 === 0).map((_, index)=>()=>{
+      const callback = choices[index * 2 + 1] as ()=>void;
+      cleanup();
+      callback();
+    });
+    choices.filter((_, index)=>index % 2 === 0).forEach((label, index)=>{
+      buttons[index].textContent = label as string;
+      buttons[index].hidden = false;
+      buttons[index].addEventListener('click', handlers[index]);
+    });
+    const cleanup = ()=>{
+      modalOverlay.classList.remove('show');
+      buttons.forEach((button, index)=>{
+        button.removeEventListener('click', handlers[index]);
+        button.textContent = previousLabels[index];
+      });
+      modalAlt.hidden = true;
+    };
+    modalOverlay.classList.add('show');
+  }
+
   function showFilenamePrompt(message: string, initialValue: string, onSubmit: (name: string)=>void){
+    modalAlt.hidden = true;
     modalMessage.textContent = message;
     const input = document.createElement('input');
     input.type = 'text';
@@ -1258,18 +1286,40 @@ import packageInfo from './package.json';
     markSaved();
   }
 
-  function promptForSaveAsName(initialName: string, message = '保存するファイル名を入力してください'){
+  function promptForSaveAsName(initialName: string, message = '\u4fdd\u5b58\u3059\u308b\u30d5\u30a1\u30a4\u30eb\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044'){
     showFilenamePrompt(message, initialName, (name: string)=>{
       if(!name) return;
       void (async()=>{
         const existingNames = await getSaveDirectoryNames();
         if(existingNames.has(name.toLocaleLowerCase())){
-          promptForSaveAsName(name, '同じファイル名があります。別のファイル名を入力してください。');
+          showThreeChoice('\u300c' + name + '\u300d\u306f\u65e2\u306b\u3042\u308a\u307e\u3059\u3002\u3069\u3046\u3057\u307e\u3059\u304b\uff1f', [
+            '\u4e0a\u66f8\u304d', ()=>void writeNamedFile(name),
+            '\u5225\u540d\u3067\u4fdd\u5b58', ()=>promptForSaveAsName(name),
+            '\u30ad\u30e3\u30f3\u30bb\u30eb', ()=>{}
+          ]);
           return;
         }
-        await writeFileToSaveDirectory(name);
-      })().catch((error: any)=>showToast('保存できませんでした: ' + (error?.message || '')));
+        await writeNamedFile(name);
+      })().catch((error: any)=>showToast('\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: ' + (error?.message || '')));
     });
+  }
+
+  async function writeNumberedVersion(name: string){
+    const latestNames = await getSaveDirectoryNames();
+    await writeFileToSaveDirectory(getNextAvailableVersionName(name, latestNames));
+  }
+
+  async function writeNamedFile(name: string){
+    try{
+      await writeFileToSaveDirectory(name);
+    }catch(error: any){
+      const detail = error?.message ? '\n' + error.message : '';
+      showThreeChoice('\u4e0a\u66f8\u304d\u4fdd\u5b58\u304c\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002' + detail + '\n\u4fdd\u5b58\u65b9\u6cd5\u3092\u9078\u3093\u3067\u304f\u3060\u3055\u3044\u3002', [
+        '\u6570\u5b57\u3092\u4ed8\u3051\u3066\u4fdd\u5b58', ()=>void writeNumberedVersion(name).catch((e: any)=>showToast('\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: ' + (e?.message || ''))),
+        '\u5225\u540d\u3067\u4fdd\u5b58', ()=>promptForSaveAsName(name),
+        '\u30ad\u30e3\u30f3\u30bb\u30eb', ()=>{}
+      ]);
+    }
   }
 
   function saveWithBrowserDownload(){
@@ -1299,24 +1349,17 @@ import packageInfo from './package.json';
       if(!saveDirectoryHandle){
         saveDirectoryHandle = await showDirectoryPicker.call(window, {id:'ume-neo-save', mode:'readwrite'});
       }
-      const currentName = fileName || '無題.txt';
+      const currentName = fileName || '\u7121\u984c.txt';
       const existingNames = await getSaveDirectoryNames();
       if(existingNames.has(currentName.toLocaleLowerCase())){
-        showConfirm(
-          '同じファイル名があります。バージョンを追加して保存しますか？',
-          ()=>{
-            void (async()=>{
-              const latestNames = await getSaveDirectoryNames();
-              const versionName = getNextAvailableVersionName(currentName, latestNames);
-              await writeFileToSaveDirectory(versionName);
-            })().catch((error: any)=>showToast('保存できませんでした: ' + (error?.message || '')));
-          },
-          ()=>promptForSaveAsName(currentName),
-          {ok:'はい', cancel:'いいえ'}
-        );
+        showThreeChoice('\u300c' + currentName + '\u300d\u306f\u65e2\u306b\u3042\u308a\u307e\u3059\u3002\u3069\u3046\u3057\u307e\u3059\u304b\uff1f', [
+          '\u4e0a\u66f8\u304d', ()=>void writeNamedFile(currentName),
+          '\u5225\u540d\u3067\u4fdd\u5b58', ()=>promptForSaveAsName(currentName),
+          '\u30ad\u30e3\u30f3\u30bb\u30eb', ()=>{}
+        ]);
         return;
       }
-      await writeFileToSaveDirectory(currentName);
+      await writeNamedFile(currentName);
     }catch(error: any){
       if(error?.name === 'AbortError') return;
       showToast('保存できませんでした: ' + (error?.message || ''));
