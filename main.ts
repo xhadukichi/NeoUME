@@ -474,6 +474,7 @@
     newlineLayer.replaceChildren();
     const lines = highlightLayer.querySelectorAll('.editorLogicalLine');
     const layerRect = highlightLayer.getBoundingClientRect();
+    const lineHeight = parseFloat(getComputedStyle(highlightLayer).lineHeight) || 0;
     lines.forEach((line, index)=>{
       if(index >= lines.length - 1) return;
       const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
@@ -498,7 +499,9 @@
       marker.className = 'newlineMarker';
       marker.textContent = '↲';
       marker.style.left = (rect.right - layerRect.left + 2) + 'px';
-      marker.style.top = (rect.top - layerRect.top) + 'px';
+      const rowRects = line.getClientRects();
+      const rowRect = rowRects.item(rowRects.length - 1) ?? rect;
+      marker.style.top = (rowRect.top + (rowRect.height - lineHeight) / 2 - layerRect.top) + 'px';
       newlineLayer.appendChild(marker);
     });
   }
