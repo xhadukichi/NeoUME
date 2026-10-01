@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UME Neo ヘルプ</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, sans-serif;
+      line-height: 1.65;
+    }
+
+    body {
+      margin: 0;
+      padding: 18px;
+      color: #222;
+      background: #fff;
+      overflow-wrap: anywhere;
+    }
+
+    h1 {
+      margin: 0 0 1em;
+      font-size: 1.4rem;
+    }
+
+    h2 {
+      margin: 1.5em 0 .4em;
+      font-size: 1.1rem;
+    }
+
+    p {
+      margin: .5em 0;
+    }
+
+    @media(prefers-color-scheme:dark) {
+      body {
+        color: #eee;
+        background: #1e1f22;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- ヘルプ文はこのファイルを編集してください。バージョン表記もここに記述します。 -->
+  <main>
+    <h1>Neo UMEditor -Ver.1.0.0-</h1>
+    <p> </p>
+
+    <h2>【概要】</h2>
+    <p>EditContext APIを使ったブラウザで動作するアウトラインエディタです。</p>
+    <p>Chromebookで利用することを目的に開発しましたが、対応するブラウザならばOSを選ばず利用可能です。</p>
+    <p>対応するブラウザではPWAでインストール可能です。</p>
+    <p>また対応するブラウザでは、ダウンロードフォルダ以外への保存、および上書き保存が可能です。</p>
+    <p></p>
+    <h2>【アウトラインツリーについて】</h2>
+    <p>・本文中の行頭の「# 」見出しを抜き出してツリー表示します。</p>
+    <p>・見出しレベルは「# 」～「###### 」の6段階。</p>
+    <p>・行頭の#は半角であり、最後の#と本文の間には「半角スペース」が必要となります。</p>
+    <p>・見出しレベルによって色分けされます。</p>
+    <p>・アウトラインツリーの見出しを選択することで、本文中のその項目にジャンプすることができます。</p>
+    <p>・最初の見出しより先に文章がある場合、ツリーには ▽TOP が表示され、これを選択すると文書の1行目にジャンプします。</p>
+    <p> </p>
+    <h2>【ツール機能】</h2>
+    <p>「🔍」検索/置換ウィンドゥを呼び出します</p>
+    <p>「↲」行末の改行コードをon/offします。offで処理負荷軽減が期待できます。</p>
+    <p>「📖0」チャプター編集モードoffの状態</p>
+    <p>「📖1」レベル１チャプター編集モード。見出しレベル１単位でエディターに表示します。
+</p>
+    <p>　　文章内容によっては処理負荷が期待できます。</p>
+    <p>「📖2」レベル２チャプター編集モード。見出しレベル２単位でエディターに表示します。</p>
+    <p>　　文章内世によってかなりの処理負荷軽減が期待できます。</p>
+    <p>「文字サイズ」基本は20pxですが、押すたびに20px→24px→16px→20px……と</p>
+    <p>　　繰り返し切り替えて表示サイズを変更できます。</p>
+    <p>「☀️⇔🌙」テーマ切り替え。</p>
+    <p>　　ライトモードとダークモードを用意しています。</p>
+    <p> </p>
+    <h2> </h2>
+    <p>不具合の連絡は x.haduki@gmail.com まで。</p>
+  </main>
+</body>
+
+</html>

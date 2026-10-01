@@ -1,5 +1,3 @@
-import packageInfo from './package.json';
-
 (function(){
   function getRequiredElement(id: string): HTMLElement{
     const element = document.getElementById(id);
@@ -32,7 +30,7 @@ import packageInfo from './package.json';
   const selectionCaret = getRequiredElement('selectionCaret');
   const textarea = getRequiredElement('editorTextarea') as HTMLTextAreaElement;
   const fileNameDisplay = getRequiredElement('fileNameDisplay');
-  const aboutOverlay = getRequiredElement('aboutOverlay');
+  const helpOverlay = getRequiredElement('helpOverlay');
   const fileInput = getRequiredElement('fileInput') as HTMLInputElement;
   const modalOverlay = getRequiredElement('modalOverlay');
   const modalMessage = getRequiredElement('modalMessage');
@@ -336,6 +334,10 @@ import packageInfo from './package.json';
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  function renderColoredSymbols(s: string){
+    return esc(s).replace(/[・●○◎【】『』《》“”]/g, '<span class="symbolRed">$&</span>');
+  }
+
   // --- heading parse ---
   function headingLevel(line: string): {level: number; text: string} | null{
     const m = line.match(/^(#{1,6}) (.*)$/);
@@ -453,11 +455,11 @@ import packageInfo from './package.json';
       const lineStart = documentOffset;
       documentOffset += line.length + 1;
       const match = activeSearchMatch;
-      let content = esc(line);
+      let content = renderColoredSymbols(line);
       if(match && match.end > lineStart && match.start < lineStart + line.length){
         const from = Math.max(0, match.start - lineStart);
         const to = Math.min(line.length, match.end - lineStart);
-        content = esc(line.slice(0, from)) + '<span class="searchHit">' + esc(line.slice(from, to)) + '</span>' + esc(line.slice(to));
+        content = renderColoredSymbols(line.slice(0, from)) + '<span class="searchHit">' + renderColoredSymbols(line.slice(from, to)) + '</span>' + renderColoredSymbols(line.slice(to));
       }
       const h = headingLevel(line);
       if(content === '') content = '\u200b';
@@ -1271,54 +1273,70 @@ import packageInfo from './package.json';
     return candidate;
   }
 
-  async function getSaveDirectoryNames(){
+  async function getSaveDirectoryNames(directory: any = saveDirectoryHandle){
     const names = new Set<string>();
-    for await (const [name] of saveDirectoryHandle.entries()) names.add(name.toLocaleLowerCase());
+    for await (const [name] of directory.entries()) names.add(name.toLocaleLowerCase());
     return names;
   }
 
-  async function writeFileToSaveDirectory(name: string){
-    const fileHandle = await saveDirectoryHandle.getFileHandle(name, {create:true});
+  async function writeFileToSaveDirectory(name: string, directory: any = saveDirectoryHandle){
+    const fileHandle = await directory.getFileHandle(name, {create:true});
     const writable = await fileHandle.createWritable();
     await writable.write(documentText);
     await writable.close();
+    saveDirectoryHandle = directory;
     fileName = name;
     markSaved();
   }
 
-  function promptForSaveAsName(initialName: string, message = '\u4fdd\u5b58\u3059\u308b\u30d5\u30a1\u30a4\u30eb\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044'){
+  function promptForSaveAsName(initialName: string, directory: any = saveDirectoryHandle, message = '\u4fdd\u5b58\u3059\u308b\u30d5\u30a1\u30a4\u30eb\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044'){
     showFilenamePrompt(message, initialName, (name: string)=>{
       if(!name) return;
       void (async()=>{
-        const existingNames = await getSaveDirectoryNames();
+        const existingNames = await getSaveDirectoryNames(directory);
         if(existingNames.has(name.toLocaleLowerCase())){
           showThreeChoice('\u300c' + name + '\u300d\u306f\u65e2\u306b\u3042\u308a\u307e\u3059\u3002\u3069\u3046\u3057\u307e\u3059\u304b\uff1f', [
-            '\u4e0a\u66f8\u304d', ()=>void writeNamedFile(name),
-            '\u5225\u540d\u3067\u4fdd\u5b58', ()=>promptForSaveAsName(name),
+            '\u4e0a\u66f8\u304d', ()=>void writeNamedFile(name, directory),
+            '\u5225\u540d\u3067\u4fdd\u5b58', ()=>void saveAsInNewDirectory(name),
             '\u30ad\u30e3\u30f3\u30bb\u30eb', ()=>{}
           ]);
           return;
         }
-        await writeNamedFile(name);
+        await writeNamedFile(name, directory);
       })().catch((error: any)=>showToast('\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: ' + (error?.message || '')));
     });
   }
 
-  async function writeNumberedVersion(name: string){
-    const latestNames = await getSaveDirectoryNames();
-    await writeFileToSaveDirectory(getNextAvailableVersionName(name, latestNames));
+  async function writeNumberedVersion(name: string, directory: any = saveDirectoryHandle){
+    const latestNames = await getSaveDirectoryNames(directory);
+    await writeFileToSaveDirectory(getNextAvailableVersionName(name, latestNames), directory);
   }
 
-  async function writeNamedFile(name: string){
+  async function writeNamedFile(name: string, directory: any = saveDirectoryHandle){
     try{
-      await writeFileToSaveDirectory(name);
+      await writeFileToSaveDirectory(name, directory);
     }catch(error: any){
       const detail = error?.message ? '\n' + error.message : '';
       showThreeChoice('\u4e0a\u66f8\u304d\u4fdd\u5b58\u304c\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002' + detail + '\n\u4fdd\u5b58\u65b9\u6cd5\u3092\u9078\u3093\u3067\u304f\u3060\u3055\u3044\u3002', [
-        '\u6570\u5b57\u3092\u4ed8\u3051\u3066\u4fdd\u5b58', ()=>void writeNumberedVersion(name).catch((e: any)=>showToast('\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: ' + (e?.message || ''))),
-        '\u5225\u540d\u3067\u4fdd\u5b58', ()=>promptForSaveAsName(name),
+        '\u6570\u5b57\u3092\u4ed8\u3051\u3066\u4fdd\u5b58', ()=>void writeNumberedVersion(name, directory).catch((e: any)=>showToast('\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: ' + (e?.message || ''))),
+        '\u5225\u540d\u3067\u4fdd\u5b58', ()=>void saveAsInNewDirectory(name),
         '\u30ad\u30e3\u30f3\u30bb\u30eb', ()=>{}
       ]);
+    }
+  }
+
+  async function saveAsInNewDirectory(initialName: string){
+    const picker = (window as any).showDirectoryPicker;
+    if(typeof picker !== 'function'){
+      showToast('\u3053\u306e\u30d6\u30e9\u30a6\u30b6\u30fc\u3067\u306f\u4fdd\u5b58\u5148\u30d5\u30a9\u30eb\u30c0\u30fc\u3092\u9078\u3079\u306a\u3044\u305f\u3081\u3001\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u3067\u4fdd\u5b58\u3057\u307e\u3059');
+      saveWithBrowserDownload();
+      return;
+    }
+    try{
+      const directory = await picker.call(window, {id:'ume-neo-save-as', mode:'readwrite'});
+      promptForSaveAsName(initialName, directory);
+    }catch(error: any){
+      if(error?.name !== 'AbortError') showToast('\u4fdd\u5b58\u5148\u30d5\u30a9\u30eb\u30c0\u30fc\u3092\u958b\u3051\u307e\u305b\u3093\u3067\u3057\u305f: ' + (error?.message || ''));
     }
   }
 
@@ -1354,7 +1372,7 @@ import packageInfo from './package.json';
       if(existingNames.has(currentName.toLocaleLowerCase())){
         showThreeChoice('\u300c' + currentName + '\u300d\u306f\u65e2\u306b\u3042\u308a\u307e\u3059\u3002\u3069\u3046\u3057\u307e\u3059\u304b\uff1f', [
           '\u4e0a\u66f8\u304d', ()=>void writeNamedFile(currentName),
-          '\u5225\u540d\u3067\u4fdd\u5b58', ()=>promptForSaveAsName(currentName),
+          '\u5225\u540d\u3067\u4fdd\u5b58', ()=>void saveAsInNewDirectory(currentName),
           '\u30ad\u30e3\u30f3\u30bb\u30eb', ()=>{}
         ]);
         return;
@@ -1366,16 +1384,22 @@ import packageInfo from './package.json';
     }
   }
 
-  getRequiredElement('btnSave').addEventListener('click', ()=>{ void saveDocument(); });
-  getRequiredElement('btnAbout').addEventListener('click', ()=>aboutOverlay.classList.add('show'));
-  getRequiredElement('aboutClose').addEventListener('click', ()=>aboutOverlay.classList.remove('show'));
-  aboutOverlay.addEventListener('click', (event)=>{
-    if(event.target === aboutOverlay) aboutOverlay.classList.remove('show');
+  function showSaveOptions(){
+    showThreeChoice('\u4fdd\u5b58\u65b9\u6cd5\u3092\u9078\u3093\u3067\u304f\u3060\u3055\u3044', [
+      '\u4e0a\u66f8\u304d\u4fdd\u5b58', ()=>void saveDocument(),
+      '\u5225\u540d\u3067\u4fdd\u5b58', ()=>void saveAsInNewDirectory(fileName || '\u7121\u984c.txt'),
+      '\u30ad\u30e3\u30f3\u30bb\u30eb', ()=>{}
+    ]);
+  }
+
+  getRequiredElement('btnSave').addEventListener('click', showSaveOptions);
+  getRequiredElement('btnAbout').addEventListener('click', ()=>helpOverlay.classList.add('show'));
+  getRequiredElement('helpClose').addEventListener('click', ()=>helpOverlay.classList.remove('show'));
+  helpOverlay.addEventListener('click', (event)=>{
+    if(event.target === helpOverlay) helpOverlay.classList.remove('show');
   });
-  getRequiredElement('aboutTitle').textContent = packageInfo.name;
-  getRequiredElement('aboutVersion').textContent = packageInfo.version;
   document.addEventListener('keydown', (event: KeyboardEvent)=>{
-    if(event.key === 'Escape') aboutOverlay.classList.remove('show');
+    if(event.key === 'Escape') helpOverlay.classList.remove('show');
   });
 
   document.addEventListener('keydown', (event: KeyboardEvent)=>{
@@ -1399,7 +1423,8 @@ import packageInfo from './package.json';
     const buttonId = shortcuts[event.key.toLowerCase()];
     if(buttonId){
       event.preventDefault();
-      (getRequiredElement(buttonId) as HTMLButtonElement).click();
+      if(event.key.toLowerCase() === 's') void saveDocument();
+      else (getRequiredElement(buttonId) as HTMLButtonElement).click();
       return;
     }
 

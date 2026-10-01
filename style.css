@@ -190,6 +190,7 @@
     font-size:13px; overflow-wrap:anywhere;
   }
   #highlightLayer .searchHit{ background:#ffe66d; color:#111; border-radius:2px; }
+  #highlightLayer .symbolRed{ color:#ff0000; }
 
   #modalBox.hasInput{ width:min(420px,85vw); }
   #modalBox .modalInput{
@@ -198,18 +199,20 @@
     background:var(--bg); color:var(--fg); font-size:16px;
   }
 
-  .aboutOverlay{
+  .helpOverlay{
     position:fixed; inset:0; z-index:1001; display:none; align-items:center; justify-content:center;
     padding:20px; background:rgba(0,0,0,0.4);
   }
-  .aboutOverlay.show{ display:flex; }
-  .aboutBox{
-    width:min(360px,85vw); padding:18px; border:1px solid var(--border); border-radius:10px;
-    background:var(--bg); color:var(--fg); box-shadow:0 4px 20px rgba(0,0,0,0.3); text-align:center;
+  .helpOverlay.show{ display:flex; }
+  .helpBox{
+    display:flex; flex-direction:column; width:min(760px,95vw); height:min(82vh,760px);
+    border:1px solid var(--border); border-radius:10px; background:var(--bg); color:var(--fg);
+    box-shadow:0 4px 20px rgba(0,0,0,0.3); overflow:hidden;
   }
-  .aboutBox h2{ margin:0 0 12px; font-size:20px; }
-  .aboutBox p{ margin:8px 0; }
-  .aboutBox button{
-    margin-top:10px; padding:6px 14px; border:1px solid var(--btn-border); border-radius:6px;
+  .helpHeader{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; border-bottom:1px solid var(--border);}
+  .helpHeader h2{margin:0; font-size:18px;}
+  .helpHeader button{
+    flex:0 0 auto; padding:6px 14px; border:1px solid var(--btn-border); border-radius:6px;
     background:var(--btn-bg); color:var(--fg); cursor:pointer;
   }
+  #helpFrame{flex:1; width:100%; min-height:0; border:0; background:var(--bg);}
