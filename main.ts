@@ -17,6 +17,7 @@
   const spacer = getRequiredElement('spacer');
   const mainArea = getRequiredElement('mainArea');
   const outlineArea = getRequiredElement('outlineArea');
+  const outlineToggle = getRequiredElement('btnOutlineToggle') as HTMLButtonElement;
   const editorWrapper = getRequiredElement('editorWrapper');
   const statusLineCount = getRequiredElement('statusLineCount');
   const statusCharacterCount = getRequiredElement('statusCharacterCount');
@@ -1394,6 +1395,27 @@
       '\u30ad\u30e3\u30f3\u30bb\u30eb', ()=>{}
     ]);
   }
+
+  outlineToggle.addEventListener('click', ()=>{
+    const isVisible = mainArea.classList.contains('sidebar-hidden');
+    mainArea.classList.toggle('sidebar-hidden', !isVisible);
+    outlineArea.setAttribute('aria-hidden', String(!isVisible));
+    outlineToggle.setAttribute('aria-pressed', String(isVisible));
+    outlineToggle.setAttribute('aria-label', isVisible
+      ? '\u76ee\u6b21\u3092\u975e\u8868\u793a'
+      : '\u76ee\u6b21\u3092\u8868\u793a');
+    outlineToggle.title = isVisible
+      ? '\u76ee\u6b21\u3092\u975e\u8868\u793a'
+      : '\u76ee\u6b21\u3092\u8868\u793a';
+    outlineToggle.textContent = isVisible
+      ? '\u{1F5C4}\uFE0F'
+      : '\u{1F5C3}\uFE0F';
+    requestAnimationFrame(()=>fullUpdate());
+  });
+  mainArea.addEventListener('transitionend', event=>{
+    const transition = event as TransitionEvent;
+    if(transition.target === mainArea && transition.propertyName.startsWith('grid-template')) fullUpdate();
+  });
 
   getRequiredElement('btnSave').addEventListener('click', showSaveOptions);
   getRequiredElement('btnAbout').addEventListener('click', ()=>helpOverlay.classList.add('show'));
