@@ -18,6 +18,9 @@
   const mainArea = getRequiredElement('mainArea');
   const outlineArea = getRequiredElement('outlineArea');
   const outlineToggle = getRequiredElement('btnOutlineToggle') as HTMLButtonElement;
+  const outlineSplitter = getRequiredElement('outlineSplitter');
+  const outlineSplitterHandle = getRequiredElement('outlineSplitterHandle') as HTMLButtonElement;
+  const statusBar = getRequiredElement('statusBar');
   const editorWrapper = getRequiredElement('editorWrapper');
   const statusLineCount = getRequiredElement('statusLineCount');
   const statusCharacterCount = getRequiredElement('statusCharacterCount');
@@ -1396,8 +1399,72 @@
     ]);
   }
 
+  let outlineRatio = 20;
+  let splitterPointerId: number | null = null;
+  const isLandscapeLayout = ()=>window.matchMedia('(orientation:landscape)').matches;
+
+  function updateSplitterValue(){
+    const percent = Math.round(outlineRatio);
+    outlineSplitterHandle.setAttribute('aria-valuenow', String(percent));
+    outlineSplitterHandle.setAttribute('aria-valuetext', '\u76EE\u6B21 ' + percent + '\uFF05\u3001\u30A8\u30C7\u30A3\u30BF\u30FC ' + (100 - percent) + '\uFF05');
+    outlineSplitterHandle.setAttribute('aria-orientation', isLandscapeLayout() ? 'vertical' : 'horizontal');
+  }
+
+  function setOutlineRatio(value: number){
+    outlineRatio = Math.max(5, Math.min(75, value));
+    mainArea.style.setProperty('--outline-track', outlineRatio + 'fr');
+    mainArea.style.setProperty('--editor-track', (100 - outlineRatio) + 'fr');
+    updateSplitterValue();
+  }
+
+  function finishSplitterDrag(){
+    if(splitterPointerId === null) return;
+    splitterPointerId = null;
+    requestAnimationFrame(()=>{
+      fullUpdate();
+      mainArea.classList.remove('is-resizing');
+    });
+  }
+
+  outlineSplitterHandle.addEventListener('pointerdown', event=>{
+    if(!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    splitterPointerId = event.pointerId;
+    mainArea.classList.add('is-resizing');
+    outlineSplitterHandle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  outlineSplitterHandle.addEventListener('pointermove', event=>{
+    if(event.pointerId !== splitterPointerId) return;
+    const landscape = isLandscapeLayout();
+    const areaRect = mainArea.getBoundingClientRect();
+    const splitterRect = outlineSplitter.getBoundingClientRect();
+    const splitterSize = landscape ? splitterRect.width : splitterRect.height;
+    const statusSize = landscape ? 0 : statusBar.getBoundingClientRect().height;
+    const available = Math.max(1, (landscape ? areaRect.width : areaRect.height) - splitterSize - statusSize);
+    const pointerOffset = landscape ? event.clientX - areaRect.left : event.clientY - areaRect.top;
+    setOutlineRatio((pointerOffset - splitterSize / 2) / available * 100);
+    event.preventDefault();
+  });
+  outlineSplitterHandle.addEventListener('pointerup', finishSplitterDrag);
+  outlineSplitterHandle.addEventListener('pointercancel', finishSplitterDrag);
+  outlineSplitterHandle.addEventListener('lostpointercapture', finishSplitterDrag);
+  outlineSplitterHandle.addEventListener('keydown', event=>{
+    const landscape = isLandscapeLayout();
+    const backward = landscape ? 'ArrowLeft' : 'ArrowUp';
+    const forward = landscape ? 'ArrowRight' : 'ArrowDown';
+    if(event.key === 'Home') setOutlineRatio(20);
+    else if(event.key === backward) setOutlineRatio(outlineRatio - (event.shiftKey ? 5 : 1));
+    else if(event.key === forward) setOutlineRatio(outlineRatio + (event.shiftKey ? 5 : 1));
+    else return;
+    event.preventDefault();
+    requestAnimationFrame(()=>fullUpdate());
+  });
+  window.addEventListener('resize', updateSplitterValue);
+  updateSplitterValue();
+
   outlineToggle.addEventListener('click', ()=>{
     const isVisible = mainArea.classList.contains('sidebar-hidden');
+    if(isVisible) setOutlineRatio(20);
     mainArea.classList.toggle('sidebar-hidden', !isVisible);
     outlineArea.setAttribute('aria-hidden', String(!isVisible));
     outlineToggle.setAttribute('aria-pressed', String(isVisible));

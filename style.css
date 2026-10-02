@@ -55,9 +55,10 @@
   #spacer{ flex:0 0 auto; }
 
   #mainArea{
+    --outline-track:2fr; --editor-track:8fr;
     flex:1; min-width:0; min-height:0; display:grid;
     grid-template-columns:minmax(0,1fr);
-    grid-template-rows:minmax(0,2fr) minmax(0,8fr) auto;
+    grid-template-rows:minmax(0,var(--outline-track)) 10px minmax(0,var(--editor-track)) auto;
     transition:grid-template-columns .24s ease, grid-template-rows .24s ease;
   }
 
@@ -86,10 +87,25 @@
   :root[data-theme="dark"] .outline-marker{ color:#fff; }
   #outlineEmpty{ opacity:0.5; font-size:12px; }
 
-  #editorWrapper{ grid-column:1; grid-row:2; min-width:0; min-height:0; position:relative; overflow:auto; background:var(--editor-bg); }
+  #outlineSplitter{ grid-column:1; grid-row:2; position:relative; z-index:5; min-width:0; min-height:0; pointer-events:none; }
+  #outlineSplitterHandle{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    display:grid; place-items:center; width:44px; height:44px; padding:0;
+    border:0; border-radius:8px; background:transparent; color:var(--fg);
+    cursor:row-resize; touch-action:none; pointer-events:auto;
+  }
+  #outlineSplitterHandle:focus-visible{ outline:2px solid #5267b8; outline-offset:1px; }
+  .splitterGripVisual{
+    display:grid; place-items:center; width:32px; height:16px;
+    border:1px solid var(--border); border-radius:8px; background:var(--btn-bg);
+    box-shadow:0 1px 3px rgba(0,0,0,.22); font-size:16px; line-height:12px;
+  }
+  .splitterGripVisual::before{ content:"\22EF"; }
+
+  #editorWrapper{ grid-column:1; grid-row:3; min-width:0; min-height:0; position:relative; overflow:auto; background:var(--editor-bg); }
 
   #statusBar{
-    grid-column:1; grid-row:3;
+    grid-column:1; grid-row:4;
     flex:0 0 auto; display:flex; align-items:center; gap:12px; min-height:26px;
     padding:3px 8px; overflow-x:auto; white-space:nowrap; scrollbar-width:none;
     border-top:1px solid var(--border); background:var(--toolbar-bg); color:var(--fg);
@@ -98,18 +114,29 @@
   #statusBar::-webkit-scrollbar{ display:none; }
   #statusBar span{ flex:0 0 auto; }
 
-  #mainArea.sidebar-hidden{ grid-template-rows:minmax(0,0fr) minmax(0,1fr) auto; }
+  #mainArea.sidebar-hidden{ grid-template-rows:minmax(0,0fr) 0px minmax(0,1fr) auto; }
   #mainArea.sidebar-hidden #outlineArea{
     min-height:0; padding-block:0; padding-inline:0; border-width:0;
     opacity:0; overflow:hidden; pointer-events:none;
   }
+  #mainArea.sidebar-hidden #outlineSplitter{ opacity:0; }
+  #mainArea.sidebar-hidden #outlineSplitterHandle{ visibility:hidden; }
+  #mainArea.is-resizing, #mainArea.is-resizing #outlineArea{ transition:none; }
+  #mainArea.is-resizing #lineNumberLayer,
+  #mainArea.is-resizing #newlineLayer,
+  #mainArea.is-resizing #currentLineLayer,
+  #mainArea.is-resizing #selectionCaret{ visibility:hidden; }
 
   @media (orientation:landscape){
-    #mainArea{ grid-template-columns:minmax(0,3fr) minmax(0,7fr); grid-template-rows:minmax(0,1fr) auto; }
+    #mainArea{ grid-template-columns:minmax(0,var(--outline-track)) 10px minmax(0,var(--editor-track)); grid-template-rows:minmax(0,1fr) auto; }
     #outlineArea{ grid-column:1; grid-row:1; border-bottom:0; border-right:2px solid var(--border); }
-    #editorWrapper{ grid-column:2; grid-row:1; }
+    #outlineSplitter{ grid-column:2; grid-row:1; }
+    #outlineSplitterHandle{ cursor:col-resize; }
+    .splitterGripVisual{ width:16px; height:32px; }
+    .splitterGripVisual::before{ content:"\22EE"; }
+    #editorWrapper{ grid-column:3; grid-row:1; }
     #statusBar{ grid-column:1 / -1; grid-row:2; }
-    #mainArea.sidebar-hidden{ grid-template-columns:minmax(0,0fr) minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; }
+    #mainArea.sidebar-hidden{ grid-template-columns:minmax(0,0fr) 0px minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; }
   }
 
   @media (prefers-reduced-motion:reduce){
